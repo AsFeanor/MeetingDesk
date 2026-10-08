@@ -20,6 +20,7 @@ sparkle-private*
 meeting.json
 .recording-recovery/
 .transcript-history/
+.notes-history/
 __pycache__/
 *.pyc
 

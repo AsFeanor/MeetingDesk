@@ -9,10 +9,18 @@ Güncellenebilir sürüm **0.3.1** yayımlandı. [En güncel GitHub sürümünü
 ## Neler yapıyor?
 
 - Seçilen mikrofon ve Mac'te çalan sistem sesi birlikte kaydedilir. Mikrofon güçlendirmesi seçilebilir; birleşik, yalnız mikrofon ve yalnız sistem kayıtları saklanır.
-- Türkçe veya İngilizce konuşma seçilen dilde Apple'ın yerel konuşma/dikte modeliyle yazıya çevrilir. Yerel döküm zaman damgalıdır; otomatik konuşmacı ayrımı yapmaz.
+- Türkçe veya İngilizce konuşma seçilen dilde Apple'ın yerel konuşma/dikte modeliyle yazıya çevrilir. Yerel döküm zaman damgalıdır; ayrı ses kaynaklarını etiketler, kişi kimliğini otomatik tanımaz.
 - Apple Intelligence dökümden özet, karar, aksiyon ve açık sorular çıkarır. Kaynak bağlantıları konuşmanın ilgili bölümüne götürür.
-- Döküm düzenlenebilir; toplantı notu ve tam döküm Markdown olarak dışa aktarılabilir.
+- Kayıttan önce 10 saniyelik ses denemesi yapılabilir; deneme yalnız mikrofonu dinletir ve kapatıldığında geçici sesler silinir.
+- Ayrı mikrofon ve sistem kayıtları ayrı çözülüp zaman sırasına birleştirilir. Kaynak etiketleri “Mikrofon” ve “Toplantı sesi”dir; karşı taraftaki kişileri tek tek tanımaz. Eski veya içe aktarılan birleşik kayıtlar açık bir bilgiyle birleşik olarak çözülür.
+- Özet, kararlar, aksiyonlar, sorumlu/tarih, sorular, fikirler ve konular düzenlenebilir. Manuel düzeltmeler ve tamamlanan görevler yenilemede korunur; önceki not sürümüne dönülebilir. Kontrol edilen notlar işaretlenebilir.
+- Paylaşım önizlemesinden özet/kararlar, yalnız aksiyonlar veya tüm notlar ve döküm seçilir; metin kopyalanabilir, Markdown ve çok sayfalı seçilebilir metin içeren PDF kaydedilebilir. Kişisel notlar varsayılan olarak paylaşılmaz.
+- İsteğe bağlı otomatik hazırlama kaydı bitirince transkripti, ardından özeti **yalnız ücretsiz yerel modda** oluşturur. Özet/model hatası veya iptal, kaydedilmiş dökümü silmez.
+- Arşivde başlık, döküm, kararlar, aksiyonlar, sorumlu/tarih, kişi adları ve kişisel notlar birlikte aranabilir.
+- Genel, ekip, ürün ve müşteri şablonları özetin odağını değiştirir; söylenmemiş sorumlu, tarih veya karar eklemez.
 - Sparkle ile uygulama içinden imzalı güncelleme denetlenir, indirilir ve kullanıcı onayıyla kurulur.
+
+[0.4.0 iş akışı rehberi](docs/WORKFLOW.md).
 
 ## Gereksinimler
 

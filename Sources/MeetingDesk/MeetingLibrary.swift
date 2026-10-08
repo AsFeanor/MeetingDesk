@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct MeetingLibrary {
     let root: URL
@@ -66,41 +67,215 @@ struct MeetingLibrary {
         guard previous.id == id else { throw MeetingError.message("Önceki döküm bu toplantıya ait değil; kayıt değiştirilmedi.") }
         return previous
     }
+
+    private func notesHistory(for id: UUID) -> URL { directory(for: id).appendingPathComponent(".notes-history", isDirectory: true) }
+    func hasNotesVersion(for id: UUID) -> Bool {
+        ((try? FileManager.default.contentsOfDirectory(at: notesHistory(for: id), includingPropertiesForKeys: nil)) ?? []).contains { $0.pathExtension == "json" }
+    }
+    func saveNotesVersion(_ meeting: Meeting) throws {
+        let folder = notesHistory(for: meeting.id)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let version = MeetingNotesVersion(meeting: meeting)
+        let name = String(format: "%020.6f", version.savedAt.timeIntervalSince1970) + "-" + UUID().uuidString + ".json"
+        let file = folder.appendingPathComponent(name)
+        try JSONEncoder().encode(version).write(to: file, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    }
+    func latestNotesVersion(for id: UUID) throws -> MeetingNotesVersion? {
+        let folder = notesHistory(for: id)
+        guard FileManager.default.fileExists(atPath: folder.path) else { return nil }
+        let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent > $1.lastPathComponent }
+        guard let file = files.first else { return nil }
+        let previous = try JSONDecoder().decode(MeetingNotesVersion.self, from: Data(contentsOf: file))
+        guard previous.meetingID == id else { throw MeetingError.message("Önceki not sürümü bu toplantıya ait değil; kayıt değiştirilmedi.") }
+        return previous
+    }
+}
+
+/// Restoring a note version never replaces the recording, transcript or personal notes.
+struct MeetingNotesVersion: Codable, Equatable {
+    var meetingID: UUID
+    var savedAt: Date
+    var notes: MeetingNotes?
+    var completedActions: Set<String>
+    var notesNeedRefresh: Bool
+    var notesEngine: String?
+    var notesManualEdits: NotesManualEdits?
+    var reviewedAt: Date?
+    var templateRawValue: String?
+    var outputLanguage: String?
+    var transcriptFingerprint: String?
+
+    init(meeting: Meeting) {
+        meetingID = meeting.id
+        savedAt = Date()
+        notes = meeting.notes
+        completedActions = meeting.completedActions
+        notesNeedRefresh = meeting.notesNeedRefresh
+        notesEngine = meeting.notesEngine
+        notesManualEdits = meeting.notesManualEdits
+        reviewedAt = meeting.reviewedAt
+        templateRawValue = meeting.templateRawValue
+        outputLanguage = meeting.outputLanguage
+        transcriptFingerprint = Self.fingerprint(of: meeting)
+    }
+
+    func matchesTranscript(of meeting: Meeting) -> Bool {
+        guard let transcriptFingerprint, let current = Self.fingerprint(of: meeting) else { return false }
+        return transcriptFingerprint == current
+    }
+
+    private static func fingerprint(of meeting: Meeting) -> String? {
+        struct TranscriptSource: Encodable {
+            var segments: [TranscriptSegment]
+            var speakerNames: [String: String]
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(TranscriptSource(segments: meeting.segments, speakerNames: meeting.speakerNames)) else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+enum MeetingShareScope: String, CaseIterable, Identifiable {
+    case summary = "Özet ve kararlar"
+    case actions = "Sadece aksiyonlar"
+    case fullTranscript = "Tüm transkript"
+
+    var id: String { rawValue }
+    var explanation: String {
+        switch self {
+        case .summary: return "Kısa özet, kararlar, açık sorular, fikirler ve konu notları."
+        case .actions: return "Aksiyonlar, tamamlanma durumu, sorumlular ve tarihler."
+        case .fullTranscript: return "Tüm toplantı notları ve zaman damgalı transkript."
+        }
+    }
+}
+
+struct MeetingShareOptions: Equatable {
+    var scope: MeetingShareScope = .summary
+    var includePersonalNotes: Bool = false
+}
+
+struct MeetingShareDocument {
+    var blocks: [MeetingExportBlock]
+    var markdown: String { blocks.map(\.markdown).joined(separator: "\n\n") }
+    var plainText: String { blocks.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n\n") }
+}
+
+struct MeetingExportBlock {
+    enum Kind { case title, metadata, section, subsection, paragraph, notice, bullet, action, transcriptHeading, anchor, footer }
+    var kind: Kind
+    var text: String
+    var markdown: String
 }
 
 enum MeetingExport {
     static func markdown(_ meeting: Meeting) -> String {
-        var lines = ["# \(meeting.title)", "", "\(meeting.createdAt.formatted(date: .long, time: .shortened)) · \(timeLabel(meeting.duration))", ""]
-        if meeting.transcriptionEngine == ProcessingMode.local.rawValue {
-            lines += ["> Transkript Mac’te oluşturuldu. Konuşmacılar otomatik ayrılmadı; kişi adları varsa kullanıcı tarafından eklenmiştir.", ""]
-            if let language = meeting.transcribedLanguage { lines += ["> Ses dökümünde kullanılan dil: \(language)", ""] }
+        markdown(meeting, options: MeetingShareOptions(scope: .fullTranscript))
+    }
+
+    static func markdown(_ meeting: Meeting, options: MeetingShareOptions) -> String {
+        document(meeting, options: options).markdown
+    }
+
+    /// Every output format consumes these same selected blocks; excluded content is never rendered.
+    static func document(_ meeting: Meeting, options: MeetingShareOptions) -> MeetingShareDocument {
+        var blocks: [MeetingExportBlock] = []
+        let includesTranscript = options.scope == .fullTranscript
+        func append(_ kind: MeetingExportBlock.Kind, _ text: String, markdown: String? = nil) {
+            blocks.append(MeetingExportBlock(kind: kind, text: text, markdown: markdown ?? text))
         }
-        if meeting.notesEngine == ProcessingMode.local.rawValue {
-            lines += ["> Özet Apple’ın yerel modeliyle oluşturuldu. Uzun toplantılardaki bölüm notları kaynaklarıyla birlikte kontrol edilmelidir.", ""]
+        func heading(_ text: String, level: Int = 2) {
+            append(level == 1 ? .title : level == 2 ? .section : .subsection, text, markdown: String(repeating: "#", count: level) + " " + text)
         }
-        func evidence(_ ids: [String]) -> String {
-            let segments = ids.compactMap { id in meeting.segments.first { $0.id == id } }
-            return segments.isEmpty ? "" : " — Kaynak: " + segments.map { "[\(timeLabel($0.start))](#\($0.id))" }.joined(separator: ", ")
+        func notice(_ text: String) { append(.notice, text, markdown: "> " + text) }
+        func evidence(_ ids: [String], links: Bool) -> String {
+            let sources = ids.compactMap { id in meeting.segments.first { $0.id == id } }
+            guard !sources.isEmpty else { return "" }
+            return " — Kaynak: " + sources.map { segment in
+                let timestamp = timeLabel(segment.start)
+                guard links else { return timestamp }
+                let fragment = segment.id.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-_."))) ?? ""
+                return "[\(timestamp)](#\(fragment))"
+            }.joined(separator: ", ")
+        }
+        func bullet(_ item: EvidenceItem) {
+            append(.bullet, "• " + item.text + evidence(item.evidence, links: false), markdown: "- " + item.text + evidence(item.evidence, links: includesTranscript))
+        }
+        func items(_ title: String, _ values: [EvidenceItem]) {
+            guard !values.isEmpty else { return }
+            heading(title)
+            values.forEach(bullet)
+        }
+        func actions(_ notes: MeetingNotes) {
+            heading("Aksiyonlar")
+            if notes.actions.isEmpty { append(.paragraph, "Bu toplantıda kaydedilmiş aksiyon bulunmuyor.") }
+            for item in notes.actions {
+                let done = meeting.completedActions.contains(item.id)
+                let details = "\(item.text) — Sorumlu: \(item.owner ?? "Belirtilmedi") · Tarih: \(item.due ?? "Belirtilmedi")"
+                append(.action, "\(done ? "☑" : "☐") " + details + evidence(item.evidence, links: false), markdown: "- [\(done ? "x" : " ")] " + details + evidence(item.evidence, links: includesTranscript))
+            }
+        }
+
+        heading(meeting.title, level: 1)
+        append(.metadata, "\(meeting.createdAt.formatted(date: .long, time: .shortened)) · \(timeLabel(meeting.duration))")
+        if includesTranscript && meeting.transcriptionEngine == ProcessingMode.local.rawValue {
+            if meeting.transcriptSourceSeparated == true {
+                notice("Transkript Mac’te oluşturuldu. Mikrofon ve toplantı sesi ayrı kayıt kaynakları olarak etiketlendi. Bu etiketler kişilerin kimliğini otomatik belirlemez; kişi adları varsa kullanıcı tarafından eklenmiştir.")
+            } else {
+                notice("Transkript Mac’te oluşturuldu. Konuşmacılar otomatik ayrılmadı; kişi adları varsa kullanıcı tarafından eklenmiştir.")
+            }
+            if let language = meeting.transcribedLanguage { notice("Ses dökümünde kullanılan dil: \(language)") }
         }
         if let notes = meeting.notes {
-            if meeting.notesNeedRefresh { lines += ["> Transkript değiştirildi. Bu özet eski sürüme dayanıyor; yeniden oluşturulmalı.", ""] }
-            lines += ["## Kısa özet", "", notes.summary, "", "## Kararlar", ""]
-            lines += notes.decisions.map { "- \($0.text)\(evidence($0.evidence))" }
-            lines += ["", "## Aksiyonlar", ""]
-            lines += notes.actions.map { "- [\(meeting.completedActions.contains($0.id) ? "x" : " ")] \($0.text) — Sorumlu: \($0.owner ?? "Belirtilmedi") · Tarih: \($0.due ?? "Belirtilmedi")\(evidence($0.evidence))" }
-            lines += ["", "## Açık sorular", ""]
-            lines += notes.questions.map { "- \($0.text)\(evidence($0.evidence))" }
-            lines += ["", "## Değerlendirilen fikirler", ""]
-            lines += notes.ideas.map { "- \($0.text)\(evidence($0.evidence))" }
-            for topic in notes.topics { lines += ["", "### \(topic.title)", "", topic.text + evidence(topic.evidence)] }
+            if meeting.notesEngine == ProcessingMode.local.rawValue {
+                notice("Notlar Apple’ın yerel modeliyle oluşturuldu. Kaynaklar kontrol edilmelidir.")
+            }
+            if meeting.notesNeedRefresh { notice("Transkript değiştirildi. Bu özet eski sürüme dayanıyor; yeniden oluşturulmalı.") }
+            if meeting.notesAreReviewed, let reviewedAt = meeting.reviewedAt {
+                append(.metadata, "Kullanıcı tarafından gözden geçirildi · \(reviewedAt.formatted(date: .abbreviated, time: .shortened))")
+            }
+            if options.scope != .actions {
+                heading("Kısa özet")
+                append(.paragraph, notes.summary)
+                items("Kararlar", notes.decisions)
+            }
+            if options.scope != .summary { actions(notes) }
+            if options.scope != .actions {
+                items("Açık sorular", notes.questions)
+                items("Değerlendirilen fikirler", notes.ideas)
+                for topic in notes.topics {
+                    heading(topic.title, level: 3)
+                    append(.paragraph, topic.text + evidence(topic.evidence, links: false), markdown: topic.text + evidence(topic.evidence, links: includesTranscript))
+                }
+            }
+        } else if options.scope == .actions {
+            heading("Aksiyonlar")
+            append(.paragraph, "Bu toplantıda kaydedilmiş aksiyon bulunmuyor.")
+        } else if options.scope == .summary {
+            heading("Kısa özet")
+            append(.paragraph, "Henüz toplantı özeti oluşturulmadı.")
         }
-        if !meeting.personalNotes.isEmpty { lines += ["", "## Kendi notlarım", "", meeting.personalNotes] }
-        lines += ["", "## Transkript", ""]
-        for segment in meeting.segments {
-            lines += ["<a id=\"\(segment.id)\"></a>", "", "**\(timeLabel(segment.start)) · \(meeting.speakerName(segment.speaker))**", "", segment.text, ""]
+        if options.includePersonalNotes && !meeting.personalNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            heading("Kendi notlarım")
+            append(.paragraph, meeting.personalNotes)
         }
-        lines += ["---", "Konuşmacı etiketleri ve otomatik metin kontrol edilmeli. Özet, toplantıda söylenenleri aktarır; bağımsız doğrulama içermez."]
-        return lines.joined(separator: "\n")
+        if includesTranscript {
+            heading("Transkript")
+            if meeting.segments.isEmpty { append(.paragraph, "Henüz transkript oluşturulmadı.") }
+            for segment in meeting.segments {
+                let anchor = segment.id.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;")
+                append(.anchor, "", markdown: "<a id=\"\(anchor)\"></a>")
+                let label = "\(timeLabel(segment.start)) · \(meeting.speakerName(segment.speaker))"
+                append(.transcriptHeading, label, markdown: "**\(label)**")
+                append(.paragraph, segment.text)
+            }
+        }
+        let footer = "Otomatik metin ve kaynaklar kontrol edilmeli. Bu çıktı toplantıda söylenenleri aktarır; bağımsız doğrulama içermez."
+        append(.footer, footer, markdown: "---\n" + footer)
+        return MeetingShareDocument(blocks: blocks)
     }
 }
 

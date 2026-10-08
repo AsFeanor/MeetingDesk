@@ -21,9 +21,9 @@ struct MeetingDeskApp: App {
             }
             CommandGroup(replacing: .newItem) {
                 Button("Yeni toplantı") { _ = store.newMeeting() }
-                    .keyboardShortcut("n").disabled(store.recorder.isRecording || store.isBusy)
+                    .keyboardShortcut("n").disabled(store.workInProgress)
                 Button("Kayıt içe aktar…") { store.importAudio() }
-                    .disabled(store.recorder.isRecording || store.isBusy)
+                    .disabled(store.workInProgress)
             }
             CommandGroup(after: .appSettings) {
                 Button("Ayarlar…") { store.showSettings = true; openWindow(id: "main") }
@@ -44,7 +44,7 @@ struct MeetingDeskApp: App {
                     _ = store.newMeeting()
                     openWindow(id: "main")
                     Task { await store.startRecording() }
-                }.disabled(store.isBusy)
+                }.disabled(store.workInProgress)
             }
             Divider()
             Button("Çık") { NSApp.terminate(nil) }
@@ -62,7 +62,7 @@ final class MeetingAppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let store else { return .terminateNow }
         // Never let an updater relaunch discard an in-flight transcript or saved recording.
-        guard !store.isBusy, !store.hasPendingRecordingSession || store.recorder.isRecording else { return .terminateCancel }
+        guard !store.isBusy, !store.showMicrophoneCheck, !store.hasPendingRecordingSession || store.recorder.isRecording else { return .terminateCancel }
         guard store.recorder.isRecording else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = "Toplantı kaydı sürüyor"
@@ -71,8 +71,8 @@ final class MeetingAppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Kayda devam et")
         guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
         Task {
-            await store.finishRecording()
-            sender.reply(toApplicationShouldTerminate: true)
+            let saved = await store.finishRecording(allowAutomaticProcessing: false)
+            sender.reply(toApplicationShouldTerminate: saved)
         }
         return .terminateLater
     }

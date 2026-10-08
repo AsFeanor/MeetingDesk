@@ -1,12 +1,16 @@
-## Toplantı 0.3.1
+## Toplantı 0.4.0
 
-İlk kurulum için bu sürümü kullanın. GitHub’ın taslak sürümlerde verdiği geçici indirme adresi yerine kalıcı sürüm adresi kullanılır.
+Kayıttan paylaşmaya kadar toplantı akışı geliştirildi.
 
-- Uygulama içinden güncelleme kontrolü ve kullanıcı onayıyla kurulum.
-- İmzalı uygulama paketleri ve imzalı sürüm bilgisi.
-- Kayıt, kurtarma veya not hazırlama bitene kadar yeniden başlatmayı bekletme.
-- Türkçe yerel transkript, kaynak bağlantılı özet ve ayrı mikrofon/sistem kayıtları.
+- Kayıttan önce 10 saniyelik mikrofon denemesi ve yalnız kendi sesini dinleme.
+- Mikrofon ve toplantı sesi ayrı çözülür, zaman sırasına birleştirilir. Mikrofon güçlendirmesi döküm için de uygulanır; özgün kayıt değişmez. Kaynak etiketleri kişi kimliği değildir.
+- Özet, kararlar, görevler, sorumlu/tarih, açık sorular, fikirler ve konuları düzenleme. Yenilemede manuel düzeltmeleri ve tamamlanmış görevleri koruma.
+- Önceki not sürümüne dönme ve kontrol edilen notları işaretleme.
+- Özet/kararlar, yalnız görevler veya tüm dökümü seçerek paylaşma; önizleme, metni kopyalama, Markdown ve çok sayfalı PDF. Kişisel notlar varsayılan olarak paylaşılmaz.
+- Kayıt bitince isteğe bağlı otomatik yerel transkript ve özet; hata/iptalde kaydedilmiş döküm korunur. OpenAI modunda otomatik işlem başlamaz.
+- Kararlar, görevler, sorumlu/tarih ve kişisel notları da kapsayan arşiv araması.
+- Genel, ekip, ürün ve müşteri toplantısı şablonları.
 
-Apple Silicon Mac içindir. Yerel transkript macOS 26+, yerel özet desteklenen Mac’te Apple Intelligence gerektirir. Bu sürümü bir kez Applications klasörüne kurun; sonraki sürümler uygulama içinden kurulabilir.
+Apple Silicon Mac içindir. Ücretsiz yerel transkript macOS 26+, yerel özet Apple Intelligence gerektirir. Kayıtlar aynı yerel arşivde kalır.
 
-Bu paket Apple Developer ID ile imzalanmış veya Apple tarafından notarize edilmiş değildir; macOS ilk açılışta güvenlik uyarısı gösterebilir.
+Paket Apple Developer ID ile imzalanmış veya Apple tarafından notarize edilmiş değildir. Güncelleme imzası bu Apple doğrulamasından ayrıdır. Gerçek mikrofon ve canlı model sonuçlarını kısa bir toplantı kaydıyla kontrol edin.

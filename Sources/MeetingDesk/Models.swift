@@ -6,6 +6,45 @@ enum ProcessingMode: String, CaseIterable, Identifiable {
     var label: String { self == .local ? "Mac’te ücretsiz" : "OpenAI · ücretli" }
 }
 
+enum MeetingTemplate: String, CaseIterable, Identifiable, Codable {
+    case general, team, product, customer
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .general: return "Genel toplantı"
+        case .team: return "Ekip toplantısı"
+        case .product: return "Ürün değerlendirmesi"
+        case .customer: return "Müşteri görüşmesi"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .general: return "Kararlar, aksiyonlar ve açık konular."
+        case .team: return "İlerleme, engeller ve ekipçe kabul edilen sonraki adımlar."
+        case .product: return "İhtiyaçlar, geri bildirimler, seçenekler ve kabul edilen ürün kararları."
+        case .customer: return "Müşterinin ihtiyaçları, soruları ve açıkça verilen sözler."
+        }
+    }
+
+    /// Templates change emphasis, never the standard of evidence or certainty.
+    var promptGuidance: String {
+        let emphasis: String
+        switch self {
+        case .general:
+            emphasis = "Focus on accepted outcomes, concrete next steps, and unresolved issues."
+        case .team:
+            emphasis = "Emphasize stated progress, blockers, dependencies, and agreed team follow-up. A status update alone is not an action or decision."
+        case .product:
+            emphasis = "Emphasize stated user needs, product feedback, alternatives, trade-offs, and explicitly accepted product decisions. Do not invent priorities, acceptance criteria, estimates, or a roadmap."
+        case .customer:
+            emphasis = "Emphasize the customer's stated needs, concerns, questions, and explicit commitments. Separate requests and suggestions from promises; do not invent commercial terms or commitments."
+        }
+        return "Meeting template: \(rawValue). \(emphasis) Include only topics present in the sources; an empty category is valid. Never infer owners, dates, agreement, or identities from this template."
+    }
+}
+
 struct TranscriptSegment: Codable, Identifiable, Equatable {
     var id: String
     var speaker: String
@@ -65,9 +104,16 @@ struct Meeting: Codable, Identifiable, Equatable {
     var microphoneDeviceID: String?
     var microphoneDeviceName: String?
     var microphoneGain: Double?
+    // Optional additions let older archives continue to decode with synthesized Codable.
+    var templateRawValue: String?
+    var notesManualEdits: NotesManualEdits?
+    var reviewedAt: Date?
+    var transcriptSourceSeparated: Bool?
 
     func speakerName(_ id: String) -> String { speakerNames[id] ?? id }
     var speakers: [String] { Array(Set(segments.map(\.speaker))).sorted() }
+    var template: MeetingTemplate { MeetingTemplate(rawValue: templateRawValue ?? "") ?? .general }
+    var notesAreReviewed: Bool { notes != nil && !notesNeedRefresh && reviewedAt != nil }
 }
 
 enum MeetingError: LocalizedError {
