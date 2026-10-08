@@ -11,11 +11,11 @@ struct RootView: View {
     @State private var showImport = false
     @State private var focusID: String?
     @State private var editSegment: String?
+    @State private var sharingMeeting: Meeting?
+    @State private var editingMeeting: Meeting?
 
     private var filtered: [Meeting] {
-        query.isEmpty ? store.meetings : store.meetings.filter {
-            $0.title.localizedCaseInsensitiveContains(query) || ($0.notes?.summary.localizedCaseInsensitiveContains(query) ?? false) || $0.segments.contains { $0.text.localizedCaseInsensitiveContains(query) }
-        }
+        store.meetings.filter { MeetingArchiveSearch.matches($0, query: query) }
     }
 
     var body: some View {
@@ -29,8 +29,16 @@ struct RootView: View {
                 Text("Konuşulanları kaybetme.").font(.caption).foregroundStyle(.secondary)
                 Button { _ = store.newMeeting(); tab = .overview } label: { Label("Yeni toplantı", systemImage: "plus") }
                     .buttonStyle(.borderedProminent).controlSize(.large)
-                    .disabled(recorder.isRecording || store.isBusy)
-                TextField("Toplantılarda ara", text: $query).textFieldStyle(.roundedBorder)
+                    .disabled(store.workInProgress)
+                TextField("Arşivde ara", text: $query).textFieldStyle(.roundedBorder)
+                    .help("Başlık, transkript, kararlar, görevler, kişi adları ve kendi notlarında ara")
+                if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    HStack {
+                        Text("\(filtered.count) toplantı bulundu").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Temizle") { query = "" }.font(.caption).buttonStyle(.plain)
+                    }
+                }
                 List(selection: $store.selectedID) {
                     ForEach(filtered) { meeting in
                         VStack(alignment: .leading, spacing: 5) {
@@ -40,7 +48,10 @@ struct RootView: View {
                         }.padding(.vertical, 5).tag(meeting.id)
                     }
                 }.listStyle(.sidebar).padding(.horizontal, -12)
-                    .disabled(recorder.isRecording)
+                    .disabled(recorder.isRecording || store.hasPendingRecordingSession || store.showMicrophoneCheck)
+                if filtered.isEmpty && !store.meetings.isEmpty {
+                    Text("Aramana uygun toplantı yok.").font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer(minLength: 0)
                 HStack(spacing: 16) {
                     Button { store.showSettings = true } label: { Label("Ayarlar", systemImage: "gearshape") }
@@ -65,6 +76,13 @@ struct RootView: View {
         }
         .sheet(isPresented: $store.showSettings) { SettingsView(store: store) }
         .sheet(isPresented: $showImport) { ImportTranscriptView(store: store) }
+        .sheet(isPresented: $store.showMicrophoneCheck) { MicrophoneCheckView(store: store) }
+        .sheet(item: $sharingMeeting) { SharingView(meeting: $0) }
+        .sheet(item: $editingMeeting) { meeting in
+            NotesEditingView(meeting: meeting) { notes in
+                try store.saveEditedNotes(notes, meetingID: meeting.id)
+            }
+        }
         .alert("İşlem tamamlanamadı", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button("Tamam") { store.errorMessage = nil }
         } message: { Text(store.errorMessage ?? "") }
@@ -100,10 +118,14 @@ struct RootView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Button { sharingMeeting = meeting } label: { Label("Paylaş", systemImage: "square.and.arrow.up") }
+                        .disabled(store.workInProgress || (meeting.segments.isEmpty && meeting.notes == nil))
                     Menu {
-                        Button("Notu dışa aktar…") { store.exportSelected() }
-                        Button("Kayıt içe aktar…") { store.importAudio() }.disabled(recorder.isRecording || store.isBusy)
-                        Button("Transkript yapıştır…") { showImport = true }.disabled(recorder.isRecording || store.isBusy)
+                        Button("Paylaş…") { sharingMeeting = meeting }.disabled(store.workInProgress)
+                        Button("Notları düzenle…") { editingMeeting = meeting }.disabled(meeting.notes == nil || store.workInProgress)
+                        Button("Önceki nota dön") { store.restorePreviousNotes() }.disabled(!store.hasPreviousNotes || store.workInProgress)
+                        Button("Kayıt içe aktar…") { store.importAudio() }.disabled(store.workInProgress)
+                        Button("Transkript yapıştır…") { showImport = true }.disabled(store.workInProgress)
                         Button("Önceki döküme dön") { store.restorePreviousTranscript() }.disabled(!store.hasPreviousTranscript || recorder.isRecording || store.isBusy)
                         Button("Yerel arşivi aç") { store.revealArchive() }
                     } label: { Image(systemName: "ellipsis.circle").font(.title2) }.menuStyle(.borderlessButton).fixedSize()
@@ -114,10 +136,19 @@ struct RootView: View {
                         Picker("Konuşma dili", selection: Binding(get: { store.speechLanguage(for: meeting) }, set: { store.setSpeechLanguage($0, for: meeting.id) })) {
                             Text("Türkçe").tag("Türkçe")
                             Text("English").tag("English")
-                        }.labelsHidden().frame(width: 135).disabled(recorder.isRecording || store.isBusy)
+                        }.labelsHidden().frame(width: 135).disabled(store.workInProgress)
                         Text("Kayıtta konuşulan dili seç. Özet dili ayrı seçilir.").font(.caption).foregroundStyle(.secondary)
                         Spacer()
                     }
+                }
+                HStack(spacing: 12) {
+                    Picker("Toplantı şablonu", selection: Binding(get: { meeting.template }, set: { template in
+                        store.update(meeting.id) { $0.templateRawValue = template.rawValue; $0.notesNeedRefresh = $0.notes != nil }
+                    })) {
+                        ForEach(MeetingTemplate.allCases) { Text($0.label).tag($0) }
+                    }.frame(width: 270).disabled(store.workInProgress)
+                    Text(meeting.template.description).font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
                 }
                 if recorder.isRecording { recordingBar }
                 else if store.selectedRecoveryURL != nil {
@@ -133,8 +164,13 @@ struct RootView: View {
                         HStack(spacing: 16) {
                             Button { Task { await store.startRecording() } } label: { Label("Kaydı başlat", systemImage: "record.circle") }
                                 .buttonStyle(.borderedProminent).disabled(store.isBusy)
-                            Text("Mikrofon + Mac sistem sesi · Yerel kayıt").font(.caption).foregroundStyle(.secondary)
+                            Button { store.showMicrophoneCheck = true } label: { Label("Sesimi kontrol et", systemImage: "mic.badge.questionmark") }
+                                .disabled(store.workInProgress)
+                            Text("Mikrofon + toplantı sesi").font(.caption).foregroundStyle(.secondary)
                         }
+                        Toggle("Kaydı bitirince transkript ve özeti Mac’te hazırla", isOn: $store.automaticLocalProcessing)
+                            .font(.caption).disabled(store.workInProgress || store.processingMode != .local)
+                        if store.processingMode != .local { Text("Otomatik hazırlama yalnız ücretsiz yerel modda çalışır.").font(.caption2).foregroundStyle(.secondary) }
                     }
                 } else if meeting.audioFileName != nil {
                     if let microphone = meeting.microphoneDeviceName {
@@ -241,7 +277,16 @@ struct RootView: View {
                     }.disabled(store.isBusy)
                 }
                 if let notes = meeting.notes {
-                    if meeting.notesNeedRefresh { Label("Bu özet önceki döküme dayanıyor. Özeti yenileyerek kaynakları güncelle.", systemImage: "arrow.clockwise").font(.callout).foregroundStyle(.orange) }
+                    HStack {
+                        if meeting.reviewedAt != nil {
+                            Label("Kontrol edildi", systemImage: "checkmark.seal.fill").foregroundStyle(.tint)
+                        } else { Label("Kontrol bekliyor", systemImage: "eye").foregroundStyle(.secondary) }
+                        Spacer()
+                        Button("Notları düzenle") { editingMeeting = meeting }.disabled(store.workInProgress)
+                        Button(meeting.reviewedAt == nil ? "Kontrol edildi olarak işaretle" : "İşareti kaldır") { store.markNotesReviewed(meeting.id) }
+                            .disabled(store.workInProgress || meeting.notesNeedRefresh)
+                    }.font(.caption)
+                    if meeting.notesNeedRefresh { Label("Döküm veya şablon değişti. Özeti yenileyip kaynakları kontrol et; düzeltmelerin korunur.", systemImage: "arrow.clockwise").font(.callout).foregroundStyle(.orange) }
                     sectionTitle("Kısa özet", icon: "text.alignleft")
                     Text(notes.summary).font(.body).lineSpacing(5).textSelection(.enabled)
                     if !notes.decisions.isEmpty {
@@ -310,7 +355,7 @@ struct RootView: View {
                         Text(recorder.isRecording ? "Transkript, kayıt bittikten sonra hazırlanır." : "Henüz transkript yok.").foregroundStyle(.secondary).padding(.vertical, 30)
                     } else {
                         if meeting.transcriptionEngine == ProcessingMode.local.rawValue {
-                            Label("Yerel mod konuşmacıları otomatik ayırmaz. ‘Konuşma’ etiketi bir kişi adı değildir.", systemImage: "person.crop.circle.badge.questionmark")
+                            Label(meeting.transcriptSourceSeparated == true ? "Mikrofon ve toplantı sesi ayrı çözüldü. Kaynak etiketleri kişi kimliği belirtmez; kulaklık yankıyı azaltır." : "Birleşik kayıt çözüldü. Yerel mod kişileri otomatik tanımaz; konuşmacı adlarını düzeltebilirsin.", systemImage: "person.crop.circle.badge.questionmark")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         if meeting.transcriptionEngine != ProcessingMode.local.rawValue { DisclosureGroup("Konuşmacı adlarını düzelt") {
@@ -334,10 +379,10 @@ struct RootView: View {
                                 }
                                 if editSegment == segment.id {
                                     if meeting.transcriptionEngine == ProcessingMode.local.rawValue {
-                                        TextField("Bu bölümün konuşmacısı (isteğe bağlı)", text: Binding(get: { store.meetings.first { $0.id == meeting.id }?.segments.first { $0.id == segment.id }?.speaker ?? segment.speaker }, set: { store.nameLocalSpeaker(meetingID: meeting.id, segmentID: segment.id, name: $0) })).textFieldStyle(.roundedBorder)
+                                        TextField("Bu bölümün konuşmacısı (isteğe bağlı)", text: Binding(get: { store.meetings.first { $0.id == meeting.id }?.segments.first { $0.id == segment.id }?.speaker ?? segment.speaker }, set: { store.nameLocalSpeaker(meetingID: meeting.id, segmentID: segment.id, name: $0) })).textFieldStyle(.roundedBorder).disabled(store.workInProgress)
                                     }
                                     TextEditor(text: Binding(get: { store.meetings.first { $0.id == meeting.id }?.segments.first { $0.id == segment.id }?.text ?? segment.text }, set: { value in store.update(meeting.id) { item in if let index = item.segments.firstIndex(where: { $0.id == segment.id }) { item.segments[index].text = value; item.notesNeedRefresh = item.notes != nil } } }))
-                                        .frame(minHeight: 90).font(.body)
+                                        .frame(minHeight: 90).font(.body).disabled(store.workInProgress)
                                 } else { Text(segment.text).lineSpacing(4).textSelection(.enabled) }
                             }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
                                 .background(focusID == segment.id ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
@@ -362,7 +407,10 @@ struct RootView: View {
     }
     private func evidenceButtons(_ ids: [String], meeting: Meeting) -> some View {
         HStack(spacing: 10) {
-            Text("Kaynak").font(.caption2).foregroundStyle(.secondary)
+            Text(ids.isEmpty ? "Elle eklendi · kaynak bağlantısı yok" : "Kaynak").font(.caption2).foregroundStyle(.secondary)
+            if ids.contains(where: { id in !meeting.segments.contains { $0.id == id } }) {
+                Text("Önceki döküme ait kaynak · kontrol et").font(.caption2).foregroundStyle(.orange)
+            }
             ForEach(ids, id: \.self) { id in
                 if let segment = meeting.segments.first(where: { $0.id == id }) {
                     Button(timeLabel(segment.start)) { focusID = id; tab = .transcript; store.seek(segment.start) }
@@ -408,6 +456,14 @@ private struct SettingsView: View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Ayarlar").font(.title2.weight(.semibold))
             MicrophoneControls(store: store)
+            Button {
+                dismiss()
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    if !store.workInProgress { store.showMicrophoneCheck = true }
+                }
+            } label: { Label("10 saniyelik ses denemesi", systemImage: "mic") }
+                .disabled(store.workInProgress)
             Text("Güçlendirme yalnız mikrofon sesine uygulanır. 2× ile başla; sesin hâlâ düşükse sonraki kayıtta 3× veya 4× seç. Kayıt sırasında mikrofon göstergesi konuşurken hareket etmeli.").font(.caption).foregroundStyle(.secondary)
             Divider()
             Picker("Transkript ve özet", selection: $store.processingMode) {
@@ -433,6 +489,10 @@ private struct SettingsView: View {
                 Text("‘Transkript oluştur’ sesi; ‘Özet oluştur’ transkripti OpenAI’a gönderir. API ücreti OpenAI hesabından tahsil edilir.").font(.callout).foregroundStyle(.secondary).lineSpacing(4)
                 Link("API anahtarı sayfasını aç", destination: URL(string: "https://platform.openai.com/api-keys")!)
             }
+            Divider()
+            Toggle("Kaydı bitirince transkript ve özeti Mac’te hazırla", isOn: $store.automaticLocalProcessing)
+                .disabled(store.workInProgress || store.processingMode != .local)
+            Text("Yalnız Mac’te ücretsiz modunda çalışır. Özet hazırlanamazsa oluşturulmuş transkript saklanır; işlemi iptal edebilirsin.").font(.caption).foregroundStyle(.secondary)
             Divider()
             Text("Kayıt için macOS mikrofon ve ekran/sistem sesi kayıt izni ister. Uygulama ekran görüntüsü veya video saklamaz.").font(.callout).foregroundStyle(.secondary)
             Button("Yerel toplantı arşivini aç") { store.revealArchive() }

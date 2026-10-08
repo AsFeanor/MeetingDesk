@@ -11,6 +11,10 @@ final class AppStore: ObservableObject {
     @Published var statusMessage = ""
     @Published var isBusy = false
     @Published var showSettings = false
+    @Published var showMicrophoneCheck = false
+    @Published var automaticLocalProcessing = UserDefaults.standard.bool(forKey: "meetingdesk.automaticLocalProcessing") {
+        didSet { UserDefaults.standard.set(automaticLocalProcessing, forKey: "meetingdesk.automaticLocalProcessing") }
+    }
     @Published var hasKey = false
     @Published var processingMode: ProcessingMode = ProcessingMode(rawValue: UserDefaults.standard.string(forKey: "meetingdesk.processingMode") ?? "") ?? .local {
         didSet { UserDefaults.standard.set(processingMode.rawValue, forKey: "meetingdesk.processingMode") }
@@ -44,11 +48,14 @@ final class AppStore: ObservableObject {
     private var playbackID: UUID?
     private var timer: Timer?
     private var processingTask: Task<Void, Never>?
+    private var isFinishingRecording = false
 
     var hasPendingRecordingSession: Bool { recordingID != nil }
+    var workInProgress: Bool { isBusy || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession }
     var selected: Meeting? { meetings.first { $0.id == selectedID } }
     var recordingMeeting: Meeting? { meetings.first { $0.id == recordingID } }
     var hasPreviousTranscript: Bool { selected.map { library.hasTranscriptVersion(for: $0.id) } ?? false }
+    var hasPreviousNotes: Bool { selected.map { library.hasNotesVersion(for: $0.id) } ?? false }
     var selectedMicrophoneName: String {
         microphoneDeviceID.isEmpty ? defaultMicrophoneName : microphoneDevices.first { $0.id == microphoneDeviceID }?.name ?? "Seçilen mikrofon bağlı değil"
     }
@@ -77,13 +84,17 @@ final class AppStore: ObservableObject {
         return destination
     }
 
-    init(root: URL? = nil) {
-        library = MeetingLibrary(root: root)
+    init(root: URL? = nil, initializeSystemServices: Bool = true) {
+        #if DEBUG
+        let previewRoot = (Bundle.main.object(forInfoDictionaryKey: "MeetingDeskPreviewArchive") as? String).map { URL(fileURLWithPath: $0, isDirectory: true) }
+        #else
+        let previewRoot: URL? = nil
+        #endif
+        library = MeetingLibrary(root: root ?? previewRoot)
         reload()
-        refreshKey()
-        refreshMicrophones()
-        Publishers.CombineLatest(recorder.$isRecording, $isBusy)
-            .map { recording, busy in recording || busy }
+        if initializeSystemServices && previewRoot == nil { refreshKey(); refreshMicrophones() }
+        Publishers.CombineLatest3(recorder.$isRecording, $isBusy, $showMicrophoneCheck)
+            .map { recording, busy, checking in recording || busy || checking }
             .removeDuplicates()
             .sink { [weak self] busy in
                 guard let self else { return }
@@ -93,7 +104,7 @@ final class AppStore: ObservableObject {
         recorder.onFailure = { [weak self] error in
             guard let self else { return }
             self.errorMessage = "Kayıt kesildi: \(error.localizedDescription). Kaydedilmiş bölüm korunuyor."
-            Task { await self.finishRecording() }
+            Task { await self.finishRecording(interrupted: true) }
         }
         timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -124,10 +135,22 @@ final class AppStore: ObservableObject {
         return meeting
     }
 
-    func update(_ id: UUID, _ change: (inout Meeting) -> Void) {
-        guard let index = meetings.firstIndex(where: { $0.id == id }) else { return }
-        change(&meetings[index])
-        persist(meetings[index])
+    @discardableResult func update(_ id: UUID, _ change: (inout Meeting) -> Void) -> Bool {
+        guard let index = meetings.firstIndex(where: { $0.id == id }) else { return false }
+        var candidate = meetings[index]
+        change(&candidate)
+        if candidate.segments != meetings[index].segments || candidate.speakerNames != meetings[index].speakerNames ||
+            candidate.notes != meetings[index].notes || candidate.notesNeedRefresh || candidate.templateRawValue != meetings[index].templateRawValue {
+            candidate.reviewedAt = nil
+        }
+        do {
+            try library.save(candidate)
+            meetings[index] = candidate
+            return true
+        } catch {
+            errorMessage = "Kaydedilemedi: \(error.localizedDescription)"
+            return false
+        }
     }
 
     func nameLocalSpeaker(meetingID: UUID, segmentID: String, name: String) {
@@ -146,7 +169,7 @@ final class AppStore: ObservableObject {
     }
 
     func startRecording() async {
-        guard !recorder.isRecording, !isBusy else { return }
+        guard !workInProgress else { return }
         stopPlayback()
         let meeting = selected.flatMap { $0.audioFileName == nil && $0.segments.isEmpty ? $0 : nil } ?? newMeeting()
         selectedID = meeting.id
@@ -159,10 +182,10 @@ final class AppStore: ObservableObject {
             let deviceName = selectedMicrophoneName
             let gain = microphoneGain
             // Persist the destination before capture so an interrupted session stays discoverable.
-            update(meeting.id) {
+            guard update(meeting.id, {
                 $0.audioFileName = "recording.m4a"; $0.source = "Mac kaydı"
                 $0.microphoneDeviceID = deviceID; $0.microphoneDeviceName = deviceName; $0.microphoneGain = gain
-            }
+            }) else { throw MeetingError.message("Toplantı kaydedilemediği için ses kaydı başlatılmadı.") }
             let url = library.directory(for: meeting.id).appendingPathComponent("recording.m4a")
             try await recorder.start(url: url, microphoneDeviceID: deviceID, microphoneGain: gain)
             statusMessage = "Kayıt Mac’te saklanıyor"
@@ -177,52 +200,82 @@ final class AppStore: ObservableObject {
         isBusy = false
     }
 
-    func finishRecording() async {
-        guard let id = recordingID else { return }
+    @discardableResult func finishRecording(interrupted: Bool = false, allowAutomaticProcessing: Bool = true) async -> Bool {
+        guard let id = recordingID, !isFinishingRecording else { return false }
+        isFinishingRecording = true
         isBusy = true
         statusMessage = "Ses kaydı kaydediliyor…"
+        var saved = false
         do {
             let duration = try await recorder.stop()
-            update(id) { $0.duration = duration }
-            statusMessage = "Kayıt hazır. İstersen yalnız mikrofonu dinleyip ardından transkripti oluşturabilirsin."
+            saved = update(id) { $0.duration = duration }
+            statusMessage = saved ? "Kayıt hazır. Transkripti oluşturabilir veya yalnız mikrofonu dinleyebilirsin." : "Ses kaydı korundu; toplantı bilgileri kaydedilemedi."
         } catch {
             errorMessage = error.localizedDescription
             statusMessage = "Kayıt tamamlanamadı; kurtarma dosyaları toplantı klasöründe korunuyor."
         }
         recordingID = nil
-        isBusy = false
+        isFinishingRecording = false
+        if AutomaticProcessingPolicy.shouldRun(enabled: automaticLocalProcessing && allowAutomaticProcessing,
+                                               mode: processingMode, saved: saved, interrupted: interrupted) {
+            runProcessing(message: "Kayıt hazır. Transkript ve özet Mac’te hazırlanıyor…") { [weak self] in
+                guard let self else { return }
+                try await MeetingWorkflowRunner.run(meetingID: id, transcribe: { id in
+                    self.statusMessage = "Transkript Mac’te hazırlanıyor…"
+                    try await self.transcribeMeeting(id, mode: .local)
+                }, summarize: { id in
+                    self.statusMessage = "Toplantı notları Mac’te hazırlanıyor…"
+                    try await self.summarizeMeeting(id, mode: .local)
+                })
+                self.statusMessage = "Transkript ve toplantı notu hazır. Kaynakları kontrol edip paylaşabilirsin."
+            }
+        } else { isBusy = false }
+        return saved
     }
 
     func transcribe() {
-        guard let meeting = selected, let audioURL = library.audioURL(for: meeting), !isBusy, !recorder.isRecording else { return }
+        guard let meeting = selected, meeting.audioFileName != nil, !workInProgress else { return }
         let mode = processingMode
-        let language = speechLanguage(for: meeting)
-        let service = mode == .openAI ? selectedOpenAIService() : nil
-        guard mode != .openAI || service != nil else { return }
         runProcessing(message: mode == .local ? "Transkript Mac’te hazırlanıyor. İlk kullanımda dil modeli indirilebilir…" : "Konuşmacılar ve transkript hazırlanıyor…") { [weak self] in
-            let segments: [TranscriptSegment]
-            if mode == .local { segments = try await LocalTranscriptionService().transcribe(audioURL: audioURL, language: language) }
-            else { segments = try await service!.transcribe(audioURL: audioURL) }
-            try Task.checkCancellation()
-            guard let self else { return }
-            if !meeting.segments.isEmpty { try self.library.saveTranscriptVersion(meeting) }
-            self.update(meeting.id) {
-                $0.segments = segments; $0.notesNeedRefresh = $0.notes != nil
-                $0.transcriptionEngine = mode.rawValue
-                $0.transcribedLanguage = mode == .local ? language : nil
-                $0.speechLanguage = language
-                $0.speakerNames = [:]
-            }
-            self.statusMessage = mode == .local ? "Yerel transkript hazır. Bu mod konuşmacıları otomatik ayırmaz." : "Transkript hazır. Konuşmacı adlarını kontrol edip özeti oluşturabilirsin."
+            try await self?.transcribeMeeting(meeting.id, mode: mode)
         }
     }
 
+    private func transcribeMeeting(_ id: UUID, mode: ProcessingMode) async throws {
+        guard let meeting = meetings.first(where: { $0.id == id }), let audioURL = library.audioURL(for: meeting) else {
+            throw MeetingError.message("Toplantının ses kaydı bulunamadı.")
+        }
+        let language = speechLanguage(for: meeting)
+        let segments: [TranscriptSegment]
+        var separated = false
+        var notice: String?
+        if mode == .local {
+            let result = try await ChannelTranscriptionService().transcribe(mixedURL: audioURL,
+                microphoneURL: library.audioURL(for: meeting, source: .microphone),
+                systemURL: library.audioURL(for: meeting, source: .system), language: language, microphoneGain: meeting.microphoneGain ?? 1)
+            segments = result.segments; separated = result.sourceSeparated; notice = result.notice
+        } else {
+            guard let service = selectedOpenAIService() else { throw MeetingError.message("OpenAI modu için API anahtarı gerekiyor.") }
+            segments = try await service.transcribe(audioURL: audioURL)
+        }
+        try Task.checkCancellation()
+        if let current = meetings.first(where: { $0.id == id }), !current.segments.isEmpty { try library.saveTranscriptVersion(current) }
+        guard update(id, {
+            $0.segments = segments; $0.notesNeedRefresh = $0.notes != nil
+            $0.transcriptionEngine = mode.rawValue
+            $0.transcribedLanguage = mode == .local ? language : nil
+            $0.speechLanguage = language; $0.speakerNames = [:]
+            $0.transcriptSourceSeparated = separated
+        }) else { throw MeetingError.message("Transkript kaydedilemedi. Önceki döküm ve ses kaydı korunuyor.") }
+        statusMessage = notice ?? (mode == .local ? "Yerel transkript hazır. Mikrofon ve toplantı sesi kaynak etiketleri kişi kimliği değildir." : "Transkript hazır. Konuşmacı adlarını kontrol edebilirsin.")
+    }
+
     func restorePreviousTranscript() {
-        guard let meeting = selected, !isBusy, !recorder.isRecording else { return }
+        guard let meeting = selected, !workInProgress else { return }
         do {
             guard let previous = try library.latestTranscriptVersion(for: meeting.id) else { return }
             try library.saveTranscriptVersion(meeting)
-            update(meeting.id) {
+            guard update(meeting.id, {
                 $0.segments = previous.segments
                 $0.speakerNames = previous.speakerNames
                 $0.transcriptionEngine = previous.transcriptionEngine
@@ -231,37 +284,85 @@ final class AppStore: ObservableObject {
                 $0.notesEngine = previous.notesEngine
                 $0.notesNeedRefresh = previous.notesNeedRefresh
                 $0.completedActions = previous.completedActions
-            }
+                $0.notesManualEdits = previous.notesManualEdits
+                $0.reviewedAt = previous.reviewedAt
+                $0.transcriptSourceSeparated = previous.transcriptSourceSeparated
+            }) else { throw MeetingError.message("Önceki döküm kaydedilemedi; mevcut döküm korundu.") }
             statusMessage = "Önceki döküm geri getirildi. Ses kaydı ve kişisel notlar korundu."
         } catch { errorMessage = error.localizedDescription }
     }
 
     func recoverRecording() async {
-        guard let meeting = selected, let destination = selectedRecoveryURL, !isBusy, !recorder.isRecording else { return }
+        guard let meeting = selected, let destination = selectedRecoveryURL, !workInProgress else { return }
         isBusy = true
         statusMessage = "Kesilen kayıt kurtarılıyor…"
         defer { isBusy = false }
         do {
             let duration = try await AudioRecorder.recover(url: destination)
-            update(meeting.id) { $0.audioFileName = "recording.m4a"; $0.duration = duration; $0.source = "Mac kaydı" }
+            guard update(meeting.id, { $0.audioFileName = "recording.m4a"; $0.duration = duration; $0.source = "Mac kaydı" }) else {
+                throw MeetingError.message("Ses dosyası kurtarıldı, ancak toplantı bilgileri kaydedilemedi. Ses kaydı korundu.")
+            }
             statusMessage = "Kayıt kurtarıldı. Transkripti oluşturabilirsin."
         } catch { errorMessage = error.localizedDescription; statusMessage = "Kurtarma tamamlanamadı; ham kayıt korunuyor." }
     }
 
     func summarize() {
-        guard let meeting = selected, !meeting.segments.isEmpty, !isBusy, !recorder.isRecording else { return }
+        guard let meeting = selected, !meeting.segments.isEmpty, !workInProgress else { return }
         let mode = processingMode
-        let service = mode == .openAI ? selectedOpenAIService() : nil
-        guard mode != .openAI || service != nil else { return }
         runProcessing(message: mode == .local ? "Toplantı notları Mac’te hazırlanıyor…" : "Kararlar, aksiyonlar ve açık sorular hazırlanıyor…") { [weak self] in
-            let notes: MeetingNotes
-            if mode == .local { notes = try await LocalSummaryService().summarize(meeting: meeting) }
-            else { notes = try await service!.summarize(meeting: meeting) }
-            try Task.checkCancellation()
-            guard let self else { return }
-            self.update(meeting.id) { $0.notes = notes; $0.notesNeedRefresh = false; $0.completedActions = []; $0.notesEngine = mode.rawValue }
-            self.statusMessage = "Toplantı notu hazır. Kaynakları ve görevleri kontrol edebilirsin."
+            try await self?.summarizeMeeting(meeting.id, mode: mode)
         }
+    }
+
+    private func summarizeMeeting(_ id: UUID, mode: ProcessingMode) async throws {
+        guard let meeting = meetings.first(where: { $0.id == id }), !meeting.segments.isEmpty else {
+            throw MeetingError.message("Özet için önce transkript oluştur.")
+        }
+        let notes: MeetingNotes
+        if mode == .local { notes = try await LocalSummaryService().summarize(meeting: meeting) }
+        else {
+            guard let service = selectedOpenAIService() else { throw MeetingError.message("OpenAI modu için API anahtarı gerekiyor.") }
+            notes = try await service.summarize(meeting: meeting)
+        }
+        try Task.checkCancellation()
+        guard let current = meetings.first(where: { $0.id == id }) else { return }
+        if current.notes != nil { try library.saveNotesVersion(current) }
+        let reconciled = NotesRevisionPolicy.reconcileGenerated(notes, into: current, engine: mode.rawValue)
+        guard update(id, { $0 = reconciled }) else { throw MeetingError.message("Toplantı notları kaydedilemedi. Önceki notlar korunuyor.") }
+        statusMessage = "Toplantı notu hazır. Düzeltmeler ve tamamlanan görevler korundu; kaynakları kontrol edebilirsin."
+    }
+
+    func saveEditedNotes(_ notes: MeetingNotes, meetingID: UUID) throws {
+        guard !workInProgress, let meeting = meetings.first(where: { $0.id == meetingID }) else {
+            throw MeetingError.message("Devam eden işlem bitince notları düzenleyebilirsin.")
+        }
+        if meeting.notes != nil { try library.saveNotesVersion(meeting) }
+        let edited = NotesRevisionPolicy.applyEdits(to: meeting, editedNotes: notes)
+        guard update(meetingID, { $0 = edited }) else { throw MeetingError.message("Notlar kaydedilemedi. Düzeltmelerini tekrar kaydetmeyi dene.") }
+        statusMessage = "Düzeltmeler kaydedildi. Özeti yenilerken korunacak."
+    }
+
+    func markNotesReviewed(_ id: UUID) {
+        guard !workInProgress else { return }
+        update(id) { meeting in
+            if meeting.reviewedAt == nil { meeting = NotesRevisionPolicy.markReviewed(meeting) }
+            else { meeting.reviewedAt = nil }
+        }
+    }
+
+    func restorePreviousNotes() {
+        guard let meeting = selected, !workInProgress else { return }
+        do {
+            guard let previous = try library.latestNotesVersion(for: meeting.id) else { return }
+            try library.saveNotesVersion(meeting)
+            guard update(meeting.id, {
+                $0.notes = previous.notes; $0.completedActions = previous.completedActions
+                $0.notesNeedRefresh = previous.notesNeedRefresh || !previous.matchesTranscript(of: meeting); $0.notesEngine = previous.notesEngine
+                $0.notesManualEdits = previous.notesManualEdits; $0.reviewedAt = previous.matchesTranscript(of: meeting) ? previous.reviewedAt : nil
+                $0.templateRawValue = previous.templateRawValue; $0.outputLanguage = previous.outputLanguage ?? $0.outputLanguage
+            }) else { throw MeetingError.message("Önceki not sürümü kaydedilemedi; mevcut notlar korundu.") }
+            statusMessage = "Önceki toplantı notu geri getirildi. Transkript ve ses kaydı korundu."
+        } catch { errorMessage = error.localizedDescription }
     }
 
     private func selectedOpenAIService() -> OpenAIService? {
@@ -289,7 +390,7 @@ final class AppStore: ObservableObject {
     var canCancelProcessing: Bool { processingTask != nil }
 
     func importAudio() {
-        guard !isBusy, !recorder.isRecording else { return }
+        guard !workInProgress else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.audio, .movie]
         panel.allowsMultipleSelection = false
@@ -323,16 +424,6 @@ final class AppStore: ObservableObject {
         meeting.source = "İçe aktarılan metin"
         update(meeting.id) { $0 = meeting }
         statusMessage = "Transkript içe aktarıldı. Ses kaydı olmadığı için zaman bağlantıları metni açar."
-    }
-
-    func exportSelected() {
-        guard let meeting = selected else { return }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
-        panel.nameFieldStringValue = meeting.title.replacingOccurrences(of: "/", with: "-") + ".md"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try MeetingExport.markdown(meeting).write(to: url, atomically: true, encoding: .utf8) }
-        catch { errorMessage = error.localizedDescription }
     }
 
     func revealArchive() { NSWorkspace.shared.open(library.root) }

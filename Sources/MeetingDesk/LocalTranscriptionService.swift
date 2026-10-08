@@ -5,7 +5,7 @@ import Speech
 
 /// Uses only Apple's on-device transcribers. No API key, audio upload, or cloud fallback.
 struct LocalTranscriptionService {
-    static let privacyDescription = "Ses Mac’te işlenir; herhangi bir API’ye gönderilmez. İlk kullanımda Apple’ın dil modeli indirilebilir. Konuşmacılar otomatik ayrılmaz."
+    static let privacyDescription = "Ses Mac’te işlenir; herhangi bir API’ye gönderilmez. İlk kullanımda Apple’ın dil modeli indirilebilir. Ayrı kaynaklar varsa Mikrofon ve Toplantı sesi etiketleri kullanılır; kişiler otomatik belirlenmez."
 
     static func localeIdentifier(for language: String) throws -> String {
         switch language {
@@ -40,13 +40,17 @@ struct LocalTranscriptionService {
             : "\(engine): \(language) destekleniyor. İlk transkriptte Apple’ın dil modeli indirilir; bunun için internet gerekir."
     }
 
-    func transcribe(audioURL: URL, language: String) async throws -> [TranscriptSegment] {
+    func transcribe(audioURL: URL, language: String, allowNoSpeech: Bool = false) async throws -> [TranscriptSegment] {
         try Task.checkCancellation()
         let requested = Locale(identifier: try Self.localeIdentifier(for: language))
         guard audioURL.isFileURL else { throw MeetingError.message("Yerel transkript için Mac’te kayıtlı bir ses dosyası seçin.") }
         let file: AVAudioFile
         do { file = try AVAudioFile(forReading: audioURL) }
-        catch { throw MeetingError.message("Ses dosyası okunamadı: \(error.localizedDescription)") }
+        catch {
+            try Task.checkCancellation()
+            throw MeetingError.message("Ses dosyası okunamadı: \(error.localizedDescription)")
+        }
+        try Task.checkCancellation()
         let duration = Double(file.length) / file.processingFormat.sampleRate
         guard duration.isFinite, duration > 0 else { throw MeetingError.message("Ses dosyası boş veya süresi okunamıyor.") }
         guard #available(macOS 26, *) else {
@@ -54,15 +58,19 @@ struct LocalTranscriptionService {
         }
         if SpeechTranscriber.isAvailable,
            let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requested) {
+            try Task.checkCancellation()
             let module = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [.audioTimeRange])
             try await ensureAssets(for: module)
-            return try await analyze(file: file, duration: duration, module: module, results: module.results)
+            return try await analyze(file: file, duration: duration, module: module, results: module.results, allowNoSpeech: allowNoSpeech)
         }
+        try Task.checkCancellation()
         if let locale = await DictationTranscriber.supportedLocale(equivalentTo: requested) {
+            try Task.checkCancellation()
             let module = DictationTranscriber(locale: locale, preset: .timeIndexedLongDictation)
             try await ensureAssets(for: module)
-            return try await analyze(file: file, duration: duration, module: module, results: module.results)
+            return try await analyze(file: file, duration: duration, module: module, results: module.results, allowNoSpeech: allowNoSpeech)
         }
+        try Task.checkCancellation()
         throw MeetingError.message("Bu Mac’te \(language) için ücretsiz yerel konuşma modeli kullanılamıyor. Ses buluta gönderilmedi. Başka bir dil seçebilir veya transkripti yapıştırabilirsiniz.")
     }
 
@@ -79,7 +87,9 @@ struct LocalTranscriptionService {
                 }
             }
             try Task.checkCancellation()
-            guard await AssetInventory.status(forModules: [module]) == .installed else {
+            let status = await AssetInventory.status(forModules: [module])
+            try Task.checkCancellation()
+            guard status == .installed else {
                 throw MeetingError.message("Apple’ın yerel dil modeli henüz hazır değil. Model indirmesi için internet bağlantısını ve Mac’teki boş alanı kontrol edin.")
             }
         } catch is CancellationError { throw CancellationError() }
@@ -91,8 +101,9 @@ struct LocalTranscriptionService {
 
     @available(macOS 26, *)
     private func analyze<Results: AsyncSequence & Sendable>(
-        file: AVAudioFile, duration: Double, module: any SpeechModule, results: Results
+        file: AVAudioFile, duration: Double, module: any SpeechModule, results: Results, allowNoSpeech: Bool
     ) async throws -> [TranscriptSegment] where Results.Element: SpeechModuleResult {
+        try Task.checkCancellation()
         let analyzer = SpeechAnalyzer(modules: [module])
         return try await withTaskCancellationHandler {
             async let collected = collect(results: results, duration: duration)
@@ -105,7 +116,7 @@ struct LocalTranscriptionService {
                 try await analyzer.finalizeAndFinish(through: lastSample)
                 let transcript = try await collected
                 try Task.checkCancellation()
-                guard !transcript.isEmpty else { throw MeetingError.message("Bu kayıtta konuşma tanınamadı. Toplantı dilini ve kaydın sesini kontrol edin.") }
+                guard allowNoSpeech || !transcript.isEmpty else { throw MeetingError.message("Bu kayıtta konuşma tanınamadı. Toplantı dilini ve kaydın sesini kontrol edin.") }
                 return transcript
             } catch {
                 await analyzer.cancelAndFinishNow()
@@ -130,6 +141,7 @@ struct LocalTranscriptionService {
                 try assembler.append(text: String(dictation.text.characters), start: dictation.range.start.seconds, end: dictation.range.end.seconds)
             } else { throw MeetingError.message("Apple yerel transkript sonucu okunamadı.") }
         }
+        try Task.checkCancellation()
         return assembler.segments
     }
 }
