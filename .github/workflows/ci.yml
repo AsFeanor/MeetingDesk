@@ -1,0 +1,48 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check Apple toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          python3 - <<'PY'
+          import subprocess
+          sdk = tuple(map(int, subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-version'], text=True).strip().split('.')))
+          assert sdk >= (26, 4), 'The app needs a macOS 26.4+ SDK (Xcode 26.4+).'
+          PY
+      - name: Validate release tooling
+        run: python3 -m unittest discover -s Packaging -p 'test_*.py'
+      - name: Test
+        env:
+          CLANG_MODULE_CACHE_PATH: ${{ github.workspace }}/.build/ModuleCache
+          SWIFT_MODULECACHE_PATH: ${{ github.workspace }}/.build/ModuleCache
+        run: swift test --disable-sandbox --disable-keychain --cache-path .build/cache --scratch-path .build
+      - name: Build app bundle
+        run: zsh Packaging/build.sh dist/ci
+      - name: Archive app bundle
+        run: ditto -c -k --sequesterRsrc --keepParent dist/ci/Toplanti.app dist/Toplanti-CI.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Toplanti-CI-${{ github.sha }}
+          path: dist/Toplanti-CI.zip
+          retention-days: 7

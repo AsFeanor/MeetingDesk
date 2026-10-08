@@ -1,0 +1,87 @@
+import SwiftUI
+import AppKit
+
+@main
+struct MeetingDeskApp: App {
+    @StateObject private var store = AppStore()
+    @NSApplicationDelegateAdaptor(MeetingAppDelegate.self) private var delegate
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Scene {
+        WindowGroup("Toplantı", id: "main") {
+            RootView(store: store, recorder: store.recorder)
+                .onAppear { delegate.store = store }
+                .frame(minWidth: 900, minHeight: 620)
+                .tint(Color(red: 0.05, green: 0.42, blue: 0.36))
+        }
+        .defaultSize(width: 1120, height: 780)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                UpdateMenu(updater: store.updates)
+            }
+            CommandGroup(replacing: .newItem) {
+                Button("Yeni toplantı") { _ = store.newMeeting() }
+                    .keyboardShortcut("n").disabled(store.recorder.isRecording || store.isBusy)
+                Button("Kayıt içe aktar…") { store.importAudio() }
+                    .disabled(store.recorder.isRecording || store.isBusy)
+            }
+            CommandGroup(after: .appSettings) {
+                Button("Ayarlar…") { store.showSettings = true; openWindow(id: "main") }
+                    .keyboardShortcut(",")
+            }
+        }
+        MenuBarExtra {
+            Text(store.recorder.isRecording ? "\(store.recorder.isPaused ? "Duraklatıldı" : "Kaydediliyor") · \(timeLabel(store.recorder.elapsed))" : "Toplantı")
+            Button("Toplantıları aç") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
+            if store.recorder.isRecording {
+                Button(store.recorder.isPaused ? "Kayda devam et" : "Kaydı duraklat") {
+                    if store.recorder.isPaused { store.recorder.resume() } else { store.recorder.pause() }
+                }
+                Button("Kaydı bitir ve sakla") { Task { await store.finishRecording() } }
+                    .disabled(store.isBusy)
+            } else {
+                Button("Yeni kayıt başlat") {
+                    _ = store.newMeeting()
+                    openWindow(id: "main")
+                    Task { await store.startRecording() }
+                }.disabled(store.isBusy)
+            }
+            Divider()
+            Button("Çık") { NSApp.terminate(nil) }
+        } label: {
+            Image(systemName: store.recorder.isRecording ? "record.circle.fill" : "waveform")
+                .foregroundStyle(store.recorder.isRecording ? .red : .primary)
+        }
+    }
+}
+
+@MainActor
+final class MeetingAppDelegate: NSObject, NSApplicationDelegate {
+    weak var store: AppStore?
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let store else { return .terminateNow }
+        // Never let an updater relaunch discard an in-flight transcript or saved recording.
+        guard !store.isBusy, !store.hasPendingRecordingSession || store.recorder.isRecording else { return .terminateCancel }
+        guard store.recorder.isRecording else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "Toplantı kaydı sürüyor"
+        alert.informativeText = "Çıkmadan önce kaydı bitirip saklayabilirsin."
+        alert.addButton(withTitle: "Kaydı sakla ve çık")
+        alert.addButton(withTitle: "Kayda devam et")
+        guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        Task {
+            await store.finishRecording()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+}
+
+private struct UpdateMenu: View {
+    @ObservedObject var updater: AppUpdater
+    var body: some View {
+        Button("Güncellemeleri kontrol et…") { updater.checkForUpdates() }
+            .disabled(!updater.canCheckForUpdates)
+    }
+}

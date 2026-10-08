@@ -1,0 +1,24 @@
+.build/
+.swiftpm/
+dist/
+work/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+.env
+.env.*
+*.p12
+*.p8
+*.key
+private-key*
+sparkle-private*
+# User recordings and exports never belong in the source repository.
+*.m4a
+*.wav
+*.mp3
+*.f32pcm
+meeting.json
+.recording-recovery/
+.transcript-history/
+__pycache__/
+*.pyc
