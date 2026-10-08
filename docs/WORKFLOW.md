@@ -25,3 +25,25 @@ Arşiv araması başlık, döküm, kararlar, aksiyonlar, sorumlu, tarih, açık 
 ## Doğrulama sınırı
 
 Otomatik testler sentetik ses/metin ve geçici arşiv kullanır. Gerçek mikrofon alımı, Apple'ın bu Mac'teki konuşma/özet modelinin sonucu ve uygulama içi güncelleme kurulumu ayrıca gerçek kullanımda doğrulanmalıdır. Hiçbir test kullanıcı arşivini düzenlemez veya gerçek toplantıyı ücretli API'ye göndermez.
+
+## Notion’a aktar · 0.5.0
+
+Önce **Ayarlar → Notion’a aktar** bölümündeki **Notion bağlantısı oluştur** bağlantısını açın. Notion’da bir **iç entegrasyon** oluşturun; içerik okuma ve ekleme izinlerini verin. Notion’daki hedef üst sayfanın **••• → Bağlantılar → Bağlantı ekle** menüsünden bu entegrasyonu ekleyin. Entegrasyon anahtarı ve hedef sayfa bağlantısını uygulamaya kaydedin. Anahtar Mac’in Anahtar Zinciri’nde tutulur; GitHub’a veya toplantı dosyalarına yazılmaz.
+
+**Paylaş** ekranında içeriği seçip önizlemeyi kontrol edin; **Notion’a aktar** seçili metni hedefin altında yeni bir sayfa olarak oluşturur. Özet ve kararlar için başlıklar, aksiyonlar için işaretlenebilir görevler, tam transkript için katlanabilir bir bölüm kullanılır. **Kendi notlarımı dahil et** yine başlangıçta kapalıdır. Ses dosyası gönderilmez. **Notion’da aç** ile sayfaya gidebilirsiniz.
+
+Aktarım yarıda kalırsa oluşan sayfa bağlantısı korunur. Yanıt kaybolduğunda Notion yazmış olabileceğinden işlem kendiliğinden tekrarlanmaz. Hedefi kontrol ettikten sonra **Kontrol ettim; yeni kopya oluşturabilirim** düğmesi yeni sayfa oluşturmayı yeniden açar. Eksik kopya uygulama tarafından silinmez veya üzerine yazılmaz. Notion çalışma alanının erişim, API ve blok sınırları ayrıca geçerlidir.
+
+Resmî belgeler: [İç entegrasyon izinleri](https://developers.notion.com/guides/get-started/authorization), [sayfa içeriği](https://developers.notion.com/guides/data-apis/working-with-page-content), [istek ve içerik sınırları](https://developers.notion.com/reference/request-limits).
+
+## Toplantı hatırlatıcısı ve kayıt kartı · 0.5.0
+
+**Ayarlar → Toplantı hatırlatıcısı → Toplantıda olabileceğimi algıla ve kaydı hatırlat** isteğe bağlıdır ve başlangıçta kapalıdır. Yerel Zoom, Teams, Webex, FaceTime ve Slack süreçlerinin aktif mikrofon kullanımını kontrol eder; uygulamanın açık olması veya ses çalması tek başına yeterli değildir. Toplantı'nın kendi kayıt/deneme mikrofonu öneri oluşturmaz. Kısa mikrofon denemelerini azaltmak için sinyal yaklaşık 6 saniye sürmelidir. Buna rağmen görüşme öncesi mikrofon testi de öneri oluşturabilir; bir görüşmeye katıldığınız kesin olarak bilinmez.
+
+Chrome, Edge, Brave, Chromium ve Safari için aynı tarayıcının aktif mikrofonu ile tanınan **görünür** Google Meet/Teams/Zoom/Webex penceresi birlikte gerekir. Pencere başlığı yalnız zaten verilmiş ekran izni varsa kontrol edilir, saklanmaz veya gönderilmez. Bazı Safari mikrofonları ortak WebKit sürecine ait olduğundan güvenle eşlenemez ve algılanmayabilir. Başka sekmenin mikrofonu ile toplantı sekmesi ayırt edilemez. Mikrofonu kapalı görüşmeler, arka plandaki görünmez toplantı sekmeleri ve tanınmayan uygulamalar kaçırılabilir. Algılama ses dinlemez, kayıt akışı oluşturmaz ve yeni izin istemez.
+
+Öneri kartında **Kayda başla** kayıt başlatır; hiçbir kayıt otomatik başlamaz. Öneriyi kapatırsanız aynı mikrofon oturumu sürerken tekrar gelmez. Sinyal yaklaşık 20 saniye kaybolursa yeniden önerilebilir. Kayıt, deneme, not hazırlama veya Notion aktarımı sırasında öneriler bekler.
+
+**Kayıt sırasında küçük kontrol kartını göster** başlangıçta açıktır. Kayıt süresi, mikrofon/toplantı sesi seviyeleri ve duraklat/devam et/bitir ve sakla kontrolleri bu karttadır. Kartı başka yere sürükleyebilirsiniz; başka uygulamadaki odağı almaz. Çarpı yalnız kartı gizler, kaydı durdurmaz. Menü çubuğundaki Toplantı simgesinden **Kayıt kartını göster** ile yeniden açılır. Bitir/sakla, uygulamanın normal güvenli saklama ve isteğe bağlı transkript/özet akışını kullanır; güncelleme veya çıkış işi yarıda kesmez.
+
+Doğrulama sınırı: Notion testleri sahte sunucu/anahtar, algılama testleri sentetik süreç/pencere sinyalleri kullanır. Bu testler gerçek bir Notion çalışma alanına yazmaz ve gerçek görüşme algılamasını ya da mikrofon alımını kanıtlamaz.

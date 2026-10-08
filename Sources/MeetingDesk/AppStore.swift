@@ -15,6 +15,16 @@ final class AppStore: ObservableObject {
     @Published var automaticLocalProcessing = UserDefaults.standard.bool(forKey: "meetingdesk.automaticLocalProcessing") {
         didSet { UserDefaults.standard.set(automaticLocalProcessing, forKey: "meetingdesk.automaticLocalProcessing") }
     }
+    @Published var meetingDetectionEnabled = UserDefaults.standard.bool(forKey: "meetingdesk.meetingDetectionEnabled") {
+        didSet {
+            UserDefaults.standard.set(meetingDetectionEnabled, forKey: "meetingdesk.meetingDetectionEnabled")
+            guard systemServicesEnabled else { return }
+            if meetingDetectionEnabled { meetingDetector.start() } else { meetingDetector.stop() }
+        }
+    }
+    @Published var showRecordingPanel = UserDefaults.standard.object(forKey: "meetingdesk.showRecordingPanel") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showRecordingPanel, forKey: "meetingdesk.showRecordingPanel") }
+    }
     @Published var hasKey = false
     @Published var processingMode: ProcessingMode = ProcessingMode(rawValue: UserDefaults.standard.string(forKey: "meetingdesk.processingMode") ?? "") ?? .local {
         didSet { UserDefaults.standard.set(processingMode.rawValue, forKey: "meetingdesk.processingMode") }
@@ -41,6 +51,9 @@ final class AppStore: ObservableObject {
     @Published private(set) var defaultMicrophoneName = "Mac’in varsayılan mikrofonu"
     let recorder = AudioRecorder()
     let updates = AppUpdater()
+    let notion: NotionConnection
+    let meetingDetector = MeetingDetector()
+    let systemServicesEnabled: Bool
     private var updateSubscriptions: Set<AnyCancellable> = []
     let library: MeetingLibrary
     private var recordingID: UUID?
@@ -51,7 +64,7 @@ final class AppStore: ObservableObject {
     private var isFinishingRecording = false
 
     var hasPendingRecordingSession: Bool { recordingID != nil }
-    var workInProgress: Bool { isBusy || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession }
+    var workInProgress: Bool { isBusy || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession || notion.isExporting }
     var selected: Meeting? { meetings.first { $0.id == selectedID } }
     var recordingMeeting: Meeting? { meetings.first { $0.id == recordingID } }
     var hasPreviousTranscript: Bool { selected.map { library.hasTranscriptVersion(for: $0.id) } ?? false }
@@ -84,23 +97,31 @@ final class AppStore: ObservableObject {
         return destination
     }
 
-    init(root: URL? = nil, initializeSystemServices: Bool = true) {
+    init(root: URL? = nil, initializeSystemServices: Bool = true, notionConnection: NotionConnection? = nil) {
         #if DEBUG
         let previewRoot = (Bundle.main.object(forInfoDictionaryKey: "MeetingDeskPreviewArchive") as? String).map { URL(fileURLWithPath: $0, isDirectory: true) }
         #else
         let previewRoot: URL? = nil
         #endif
+        systemServicesEnabled = initializeSystemServices && previewRoot == nil
+        notion = notionConnection ?? NotionConnection(loadCredentials: systemServicesEnabled)
         library = MeetingLibrary(root: root ?? previewRoot)
         reload()
         if initializeSystemServices && previewRoot == nil { refreshKey(); refreshMicrophones() }
-        Publishers.CombineLatest3(recorder.$isRecording, $isBusy, $showMicrophoneCheck)
-            .map { recording, busy, checking in recording || busy || checking }
+        Publishers.CombineLatest4(recorder.$isRecording, $isBusy, $showMicrophoneCheck, notion.$isExporting)
+            .map { recording, busy, checking, exporting in recording || busy || checking || exporting }
             .removeDuplicates()
             .sink { [weak self] busy in
                 guard let self else { return }
-                self.updates.setWorkInProgress(busy || self.hasPendingRecordingSession)
+                let active = busy || self.hasPendingRecordingSession
+                self.updates.setWorkInProgress(active)
+                self.meetingDetector.setSuspended(active)
             }
             .store(in: &updateSubscriptions)
+        notion.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &updateSubscriptions)
+        if systemServicesEnabled && meetingDetectionEnabled { meetingDetector.start() }
         recorder.onFailure = { [weak self] error in
             guard let self else { return }
             self.errorMessage = "Kayıt kesildi: \(error.localizedDescription). Kaydedilmiş bölüm korunuyor."
@@ -171,6 +192,7 @@ final class AppStore: ObservableObject {
     func startRecording() async {
         guard !workInProgress else { return }
         stopPlayback()
+        meetingDetector.dismissCurrentMeeting()
         let meeting = selected.flatMap { $0.audioFileName == nil && $0.segments.isEmpty ? $0 : nil } ?? newMeeting()
         selectedID = meeting.id
         recordingID = meeting.id

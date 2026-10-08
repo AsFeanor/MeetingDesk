@@ -4,10 +4,16 @@ import UniformTypeIdentifiers
 
 struct SharingView: View {
     let meeting: Meeting
+    @ObservedObject var notion: NotionConnection
     @Environment(\.dismiss) private var dismiss
     @State private var options = MeetingShareOptions()
     @State private var errorMessage: String?
     @State private var statusMessage = ""
+    @State private var showNotionConnection = false
+    @State private var notionExportRequested = false
+    @State private var exportedNotionURL: URL?
+
+    private var exporting: Bool { notion.isExporting || notionExportRequested }
 
     private var document: MeetingShareDocument { MeetingExport.document(meeting, options: options) }
 
@@ -19,14 +25,14 @@ struct SharingView: View {
                     Text(meeting.title).font(.callout).foregroundStyle(.secondary).lineLimit(2)
                 }
                 Spacer()
-                Button("Kapat") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Kapat") { dismiss() }.keyboardShortcut(.cancelAction).disabled(exporting)
             }
             Picker("Paylaşılacak içerik", selection: $options.scope) {
                 ForEach(MeetingShareScope.allCases) { scope in Text(scope.rawValue).tag(scope) }
-            }.pickerStyle(.segmented)
+            }.pickerStyle(.segmented).disabled(exporting)
             Text(options.scope.explanation).font(.caption).foregroundStyle(.secondary)
             Toggle("Kendi notlarımı dahil et", isOn: $options.includePersonalNotes)
-                .toggleStyle(.checkbox)
+                .toggleStyle(.checkbox).disabled(exporting)
             Text(options.includePersonalNotes ? "Kendi notların da aşağıdaki çıktıya eklendi." : "Kendi notların paylaşımın dışında tutulur.")
                 .font(.caption).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 10) {
@@ -49,6 +55,36 @@ struct SharingView: View {
             if !statusMessage.isEmpty {
                 Text(statusMessage).font(.caption).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently)
             }
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Button {
+                        if notion.isConfigured { exportToNotion(document) }
+                        else { showNotionConnection = true }
+                    } label: {
+                        Label(exportedNotionURL == nil ? "Notion’a aktar" : "Notion’da yeni kopya oluştur", systemImage: "square.and.arrow.up")
+                    }.disabled(exporting || notion.exportMayHaveSucceeded)
+                    Button("Notion bağlantısı…") { showNotionConnection = true }.disabled(exporting)
+                    Spacer()
+                    if let url = exportedNotionURL { Link("Notion’da aç", destination: url) }
+                }
+                Text("Önizlemedeki seçili metin hedef Notion sayfasının altına gönderilir. Ses kaydı gönderilmez.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if notion.isConfigured, let pageID = try? NotionPageIdentifier.parse(notion.parentPageInput) {
+                    Link("Hedef Notion sayfası", destination: NotionPageIdentifier.pageURL(pageID)).font(.caption)
+                }
+                if exporting {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text(notion.statusMessage).font(.caption) }
+                }
+                if notion.exportMayHaveSucceeded && !exporting {
+                    Text(notion.statusMessage).font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        if let url = notion.incompleteExportURL { Link("Oluşan sayfayı kontrol et", destination: url) }
+                        Button("Kontrol ettim; yeni kopya oluşturabilirim") { notion.acknowledgeIncompleteExport() }
+                            .font(.caption)
+                    }
+                }
+            }
             HStack(spacing: 12) {
                 Button { copy(document) } label: { Label("Metni kopyala", systemImage: "doc.on.doc") }
                 Spacer()
@@ -58,10 +94,35 @@ struct SharingView: View {
         }
         .padding(24)
         .frame(minWidth: 690, idealWidth: 760, minHeight: 630, idealHeight: 720)
-        .onChange(of: options) { _, _ in statusMessage = "" }
+        .interactiveDismissDisabled(exporting)
+        .onChange(of: options) { _, _ in statusMessage = ""; exportedNotionURL = nil }
+        .sheet(isPresented: $showNotionConnection) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack {
+                    Text("Notion bağlantısı").font(.title2.weight(.semibold))
+                    Spacer()
+                    Button("Kapat") { showNotionConnection = false }.keyboardShortcut(.cancelAction)
+                }
+                ScrollView { NotionConnectionView(connection: notion) }
+            }.padding(24).frame(width: 590).frame(maxHeight: 680)
+        }
         .alert("Paylaşım hazırlanamadı", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("Tamam") { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
+    }
+
+    private func exportToNotion(_ selection: MeetingShareDocument) {
+        guard !exporting, notion.canExport else { return }
+        notionExportRequested = true
+        statusMessage = ""
+        Task { @MainActor in
+            defer { notionExportRequested = false }
+            do {
+                let receipt = try await notion.export(document: selection, title: meeting.title)
+                exportedNotionURL = receipt.url
+                statusMessage = "Seçili içerik Notion’a aktarıldı."
+            } catch { errorMessage = error.localizedDescription }
+        }
     }
 
     private func copy(_ selection: MeetingShareDocument) {

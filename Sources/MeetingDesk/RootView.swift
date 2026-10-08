@@ -77,7 +77,7 @@ struct RootView: View {
         .sheet(isPresented: $store.showSettings) { SettingsView(store: store) }
         .sheet(isPresented: $showImport) { ImportTranscriptView(store: store) }
         .sheet(isPresented: $store.showMicrophoneCheck) { MicrophoneCheckView(store: store) }
-        .sheet(item: $sharingMeeting) { SharingView(meeting: $0) }
+        .sheet(item: $sharingMeeting) { SharingView(meeting: $0, notion: store.notion) }
         .sheet(item: $editingMeeting) { meeting in
             NotesEditingView(meeting: meeting) { notes in
                 try store.saveEditedNotes(notes, meetingID: meeting.id)
@@ -493,6 +493,18 @@ private struct SettingsView: View {
             Toggle("Kaydı bitirince transkript ve özeti Mac’te hazırla", isOn: $store.automaticLocalProcessing)
                 .disabled(store.workInProgress || store.processingMode != .local)
             Text("Yalnız Mac’te ücretsiz modunda çalışır. Özet hazırlanamazsa oluşturulmuş transkript saklanır; işlemi iptal edebilirsin.").font(.caption).foregroundStyle(.secondary)
+            Divider()
+            Text("Toplantı hatırlatıcısı").font(.headline)
+            Toggle("Toplantıda olabileceğimi algıla ve kaydı hatırlat", isOn: $store.meetingDetectionEnabled)
+            Text("Zoom, Teams, Webex, FaceTime ve Slack’in mikrofon kullanımı kontrol edilir. Tarayıcıda mikrofon kullanımıyla birlikte görünür bir toplantı penceresi gerekir; mevcut ekran iznin yoksa bu kontrol yapılmaz. Ses dinlenmez veya kaydedilmez. Mikrofon kapalı görüşmeler algılanmayabilir.")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("Hatırlatıcı kaydı kendiliğinden başlatmaz. ‘Kayda başla’ düğmesine bastığında normal kayıt izinleri ve seçili mikrofon kullanılır.")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("Kayıt sırasında küçük kontrol kartını göster", isOn: $store.showRecordingPanel)
+            Text("Karttan süreyi ve ses göstergelerini izleyebilir, duraklatabilir veya bitirip saklayabilirsin. Kartı gizlersen kayıt sürer; menü çubuğundan tekrar açabilirsin.")
+                .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            NotionConnectionView(connection: store.notion)
             Divider()
             Text("Kayıt için macOS mikrofon ve ekran/sistem sesi kayıt izni ister. Uygulama ekran görüntüsü veya video saklamaz.").font(.callout).foregroundStyle(.secondary)
             Button("Yerel toplantı arşivini aç") { store.revealArchive() }

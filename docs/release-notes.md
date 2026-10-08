@@ -1,16 +1,15 @@
-## Toplantı 0.4.0
+## Toplantı 0.5.0
 
-Kayıttan paylaşmaya kadar toplantı akışı geliştirildi.
+Notion paylaşımı ve toplantı sırasında küçük kayıt kartı eklendi.
 
-- Kayıttan önce 10 saniyelik mikrofon denemesi ve yalnız kendi sesini dinleme.
-- Mikrofon ve toplantı sesi ayrı çözülür, zaman sırasına birleştirilir. Mikrofon güçlendirmesi döküm için de uygulanır; özgün kayıt değişmez. Kaynak etiketleri kişi kimliği değildir.
-- Özet, kararlar, görevler, sorumlu/tarih, açık sorular, fikirler ve konuları düzenleme. Yenilemede manuel düzeltmeleri ve tamamlanmış görevleri koruma.
-- Önceki not sürümüne dönme ve kontrol edilen notları işaretleme.
-- Özet/kararlar, yalnız görevler veya tüm dökümü seçerek paylaşma; önizleme, metni kopyalama, Markdown ve çok sayfalı PDF. Kişisel notlar varsayılan olarak paylaşılmaz.
-- Kayıt bitince isteğe bağlı otomatik yerel transkript ve özet; hata/iptalde kaydedilmiş döküm korunur. OpenAI modunda otomatik işlem başlamaz.
-- Kararlar, görevler, sorumlu/tarih ve kişisel notları da kapsayan arşiv araması.
-- Genel, ekip, ürün ve müşteri toplantısı şablonları.
+- Paylaş ekranından seçili özeti, kararları, görevleri veya tam transkripti Notion’da yeni alt sayfa olarak oluşturma. Başlıklar ve görev kutuları Notion bloklarıdır; transkript katlanabilir bölümde durur. Kişisel notlar yalnız ayrıca seçilirse eklenir; ses kaydı gönderilmez.
+- Bir defalık Notion iç entegrasyon anahtarı ve hedef sayfa bağlantısı kurulumu. Anahtar yalnız Mac’in Anahtar Zinciri’nde saklanır.
+- Uzun metin için karakter/blok/boyut sınırlarına uygun aktarım; sınırlı isteklerde kontrollü bekleme. Eksik veya sonucu belirsiz aktarımda sayfayı kontrol etmeden otomatik ikinci kopya oluşturulmaz.
+- İsteğe bağlı toplantı hatırlatıcısı: Zoom, Teams, Webex, FaceTime veya Slack mikrofonu kullanıyorsa kayıt önerisi. Tarayıcıda aynı tarayıcının mikrofon kullanımı ve tanınan görünür toplantı penceresi birlikte gerekir.
+- Algılama ses dinlemez, yeni izin istemez ve kayıt başlatmaz. Mikrofon kapalı görüşmeler algılanmayabilir; tarayıcı sinyali aynı sekmeyi kesin olarak doğrulayamaz.
+- Ekranın köşesinde, diğer pencerelerin önünde süre ve mikrofon/toplantı sesi göstergeleri; duraklat/devam et ve bitir/sakla. Kart gizlenirse kayıt devam eder; menü çubuğundan tekrar açılır.
+- Notion aktarımı tamamlanana kadar güncelleme kurulumu ve uygulamadan çıkış bekler.
 
 Apple Silicon Mac içindir. Ücretsiz yerel transkript macOS 26+, yerel özet Apple Intelligence gerektirir. Kayıtlar aynı yerel arşivde kalır.
 
-Paket Apple Developer ID ile imzalanmış veya Apple tarafından notarize edilmiş değildir. Güncelleme imzası bu Apple doğrulamasından ayrıdır. Gerçek mikrofon ve canlı model sonuçlarını kısa bir toplantı kaydıyla kontrol edin.
+Paket Developer ID ile imzalanmış veya Apple tarafından notarize edilmiş değildir. Güncelleme imzası Apple doğrulamasından ayrıdır. Gerçek toplantı algılama, ses kaydı ve Notion sayfası kurulumu bu Mac’te ayrıca denenmelidir.
