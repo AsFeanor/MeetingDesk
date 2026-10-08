@@ -70,7 +70,7 @@ struct LocalSummaryService {
                 let scopedText = sources.reduce(into: [String: String]()) { result, source in
                     result[source.id, default: ""] += source.text
                 }
-                try Self.validate(notes: notes, meeting: meeting, allowedEvidence: Set(sources.map(\.id)), scopedText: scopedText)
+                try Self.validate(notes: notes, meeting: meeting, allowedEvidence: Set(sources.map(\.id)), scopedText: scopedText, requireTemplateSections: true)
                 generated.append(notes)
             } catch is CancellationError { throw CancellationError() }
             catch let error as MeetingError { throw error }
@@ -80,7 +80,7 @@ struct LocalSummaryService {
             }
         }
         let notes = Self.combine(generated, sources: chunks, english: english)
-        try Self.validate(notes: notes, meeting: meeting)
+        try Self.validate(notes: notes, meeting: meeting, requireTemplateSections: true)
         return notes
     }
 
@@ -213,7 +213,7 @@ struct LocalSummaryService {
             case .action: notes.actions.append(ActionItem(id: id, text: item.text, owner: item.owner, due: item.due, evidence: evidence))
             case .question: notes.questions.append(EvidenceItem(id: id, text: item.text, evidence: evidence))
             case .idea: notes.ideas.append(EvidenceItem(id: id, text: item.text, evidence: evidence))
-            case .topic: notes.topics.append(TopicNote(id: id, title: item.title ?? item.text, text: item.text, evidence: evidence))
+            case .topic: notes.topics.append(TopicNote(id: id, title: item.title ?? item.text, text: item.text, evidence: evidence, sectionID: item.sectionID))
             }
         }
         return notes
@@ -236,13 +236,13 @@ struct LocalSummaryService {
             notes.actions += part.actions.map { ActionItem(id: $0.id, text: "\(prefix): \($0.text)", owner: $0.owner, due: $0.due, evidence: $0.evidence) }
             notes.questions += part.questions.map { EvidenceItem(id: $0.id, text: "\(prefix): \($0.text)", evidence: $0.evidence) }
             notes.ideas += part.ideas.map { EvidenceItem(id: $0.id, text: "\(prefix): \($0.text)", evidence: $0.evidence) }
-            notes.topics += part.topics.map { TopicNote(id: $0.id, title: "\(prefix): \($0.title)", text: $0.text, evidence: $0.evidence) }
+            notes.topics += part.topics.map { TopicNote(id: $0.id, title: "\(prefix): \($0.title)", text: $0.text, evidence: $0.evidence, sectionID: $0.sectionID) }
         }
         return notes
     }
 
     static func validate(notes: MeetingNotes, meeting: Meeting, allowedEvidence: Set<String>? = nil,
-                         scopedText: [String: String]? = nil) throws {
+                         scopedText: [String: String]? = nil, requireTemplateSections: Bool = false) throws {
         let ids = Set(meeting.segments.map(\.id))
         guard ids.count == meeting.segments.count else { throw MeetingError.message("Transkript kaynak kimlikleri yineleniyor.") }
         let segments = Dictionary(uniqueKeysWithValues: meeting.segments.map { ($0.id, $0) })
@@ -263,6 +263,7 @@ struct LocalSummaryService {
             try check(id: topic.id, text: topic.text, evidence: topic.evidence)
             guard !topic.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw MeetingError.message("Yerel özette başlıksız bir konu var.") }
         }
+        try validateTemplateSections(notes: notes, template: meeting.template, requireSections: requireTemplateSections)
         for action in notes.actions {
             try check(id: action.id, text: action.text, evidence: action.evidence)
             let sources = action.evidence.compactMap { segments[$0] }
@@ -285,6 +286,23 @@ struct LocalSummaryService {
             }
         }
     }
+
+    /// Generated context must belong to the selected layout. Legacy notes with no
+    /// section assignment remain valid when read or checked outside generation.
+    static func validateTemplateSections(notes: MeetingNotes, template: MeetingTemplate,
+                                         requireSections: Bool) throws {
+        let sectionIDs = Set(template.contextSections.map(\.id))
+        for topic in notes.topics {
+            if let sectionID = topic.sectionID {
+                guard sectionIDs.contains(sectionID) else {
+                    throw MeetingError.message("Özette seçilen toplantı şablonuna ait olmayan bir bölüm var. Notlar kaydedilmedi; transkript korunuyor.")
+                }
+            } else if requireSections && template != .general {
+                throw MeetingError.message("Özet seçilen toplantı şablonuna göre bölümlendirilemedi. Notlar kaydedilmedi; transkript korunuyor. Yeniden deneyin.")
+            }
+        }
+    }
+
 }
 
 @available(macOS 26.0, *)
@@ -299,6 +317,8 @@ private struct LocalGeneratedItem {
     var text: String
     @Guide(description: "Short topic title for a topic; nil for other categories.")
     var title: String?
+    @Guide(description: "For a topic, the exact context section ID specified by the selected meeting template in the instructions; nil for decisions, actions, questions and ideas.")
+    var sectionID: String?
     @Guide(description: "Only the explicitly named responsible person for an action; otherwise nil.")
     var owner: String?
     @Guide(description: "Exact due phrase from cited text for an action; otherwise nil.")

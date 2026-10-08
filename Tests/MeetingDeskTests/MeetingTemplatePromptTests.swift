@@ -2,6 +2,22 @@ import XCTest
 @testable import MeetingDesk
 
 final class MeetingTemplatePromptTests: XCTestCase {
+    func testLocalInstructionsGiveEachTemplateStructuredContextAndSummaryFocus() {
+        for template in MeetingTemplate.allCases {
+            let instructions = LocalSummaryService.instructions(language: "Turkish", template: template)
+            XCTAssertTrue(instructions.contains(template.generationGuidance))
+            XCTAssertTrue(instructions.contains("sectionID"))
+            for section in template.contextSections {
+                XCTAssertTrue(instructions.contains("\(section.id):"))
+            }
+            XCTAssertTrue(instructions.contains("UNTRUSTED"))
+            XCTAssertTrue(instructions.contains("Owner and due are nil"))
+            XCTAssertTrue(instructions.contains("proposals, investigations, conditional plans and estimates are ideas"))
+        }
+        XCTAssertNotEqual(LocalSummaryService.instructions(language: "Turkish", template: .team),
+                          LocalSummaryService.instructions(language: "Turkish", template: .customer))
+    }
+
     func testOpenAIPromptUsesSelectedTemplateWithoutWeakeningGrounding() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [TemplateRequestProtocol.self]

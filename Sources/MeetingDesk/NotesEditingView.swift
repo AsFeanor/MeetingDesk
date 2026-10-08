@@ -5,10 +5,14 @@ struct NotesEditingView: View {
     @State private var draft: MeetingNotes
     @State private var saveError: String?
     private let onSave: (MeetingNotes) throws -> Void
+    private let template: MeetingTemplate
+    private let english: Bool
 
     init(meeting: Meeting, onSave: @escaping (MeetingNotes) throws -> Void) {
         _draft = State(initialValue: meeting.notes ?? MeetingNotes(summary: "", decisions: [], actions: [], questions: [], ideas: [], topics: []))
         self.onSave = onSave
+        template = MeetingTemplate(rawValue: meeting.notesTemplateRawValue ?? "") ?? .general
+        english = meeting.outputLanguage == "English"
     }
 
     var body: some View {
@@ -21,15 +25,10 @@ struct NotesEditingView: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Kısa özet").font(.headline)
-                        editor($draft.summary, height: 120).accessibilityLabel("Kısa özet")
+                    Text("Not düzeni: \(template.label)").font(.caption).foregroundStyle(.secondary)
+                    ForEach(template.sectionOrder, id: \.rawValue) { kind in
+                        editorSection(kind)
                     }
-                    evidenceSection("Kararlar", items: $draft.decisions)
-                    actionSection
-                    evidenceSection("Açık sorular", items: $draft.questions)
-                    evidenceSection("Fikirler ve seçenekler", items: $draft.ideas)
-                    topicSection
                 }.padding(24)
             }
             Divider()
@@ -40,6 +39,22 @@ struct NotesEditingView: View {
                 Button("Kaydet") { save() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
             }.padding(20)
         }.frame(minWidth: 620, idealWidth: 720, minHeight: 580, idealHeight: 760)
+    }
+
+    @ViewBuilder
+    private func editorSection(_ kind: MeetingNotesSectionKind) -> some View {
+        switch kind {
+        case .summary:
+            VStack(alignment: .leading, spacing: 8) {
+                Text(template.summaryTitle(english: english)).font(.headline)
+                editor($draft.summary, height: 120).accessibilityLabel(template.summaryTitle(english: english))
+            }
+        case .decisions: evidenceSection(template.decisionsTitle(english: english), items: $draft.decisions)
+        case .actions: actionSection
+        case .questions: evidenceSection(template.questionsTitle(english: english), items: $draft.questions)
+        case .ideas: evidenceSection(template.ideasTitle(english: english), items: $draft.ideas)
+        case .contexts: topicSection
+        }
     }
 
     private func evidenceSection(_ title: String, items: Binding<[EvidenceItem]>) -> some View {
@@ -63,7 +78,7 @@ struct NotesEditingView: View {
 
     private var actionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("Aksiyonlar") {
+            sectionHeader(template.actionsTitle(english: english)) {
                 draft.actions.append(ActionItem(id: newID(), text: "", owner: nil, due: nil, evidence: []))
             }
             if draft.actions.isEmpty { Text("Henüz bir aksiyon yok.").font(.caption).foregroundStyle(.secondary) }
@@ -91,23 +106,53 @@ struct NotesEditingView: View {
     }
 
     private var topicSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("Konular") {
-                draft.topics.append(TopicNote(id: newID(), title: "", text: "", evidence: []))
-            }
-            if draft.topics.isEmpty { Text("Henüz bir konu yok.").font(.caption).foregroundStyle(.secondary) }
-            ForEach($draft.topics) { topic in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        sourceLabel(topic.wrappedValue.evidence)
-                        Spacer()
-                        removeButton { draft.topics.removeAll { $0.id == topic.wrappedValue.id } }
+        let groups = MeetingNotesPresentation.sections(notes: draft, template: template, english: english)
+            .filter { $0.kind == .contexts }
+        return VStack(alignment: .leading, spacing: 24) {
+            ForEach(groups) { group in
+                VStack(alignment: .leading, spacing: 12) {
+                    if group.id == "context-other" {
+                        sectionHeader(group.title) { appendManualTopic() }
+                    } else {
+                        Text(group.title).font(.headline)
                     }
-                    TextField("Konu başlığı", text: topic.title).textFieldStyle(.roundedBorder)
-                    editor(topic.text, height: 80).accessibilityLabel("Konu açıklaması")
-                }.padding(12).background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+                    if let message = group.emptyMessage {
+                        Text(message).font(.caption).foregroundStyle(.secondary)
+                    }
+                    ForEach(group.topics) { topic in
+                        topicEditor(binding(for: topic))
+                    }
+                }
+            }
+            if !groups.contains(where: { $0.id == "context-other" }) {
+                VStack(alignment: .leading, spacing: 12) {
+                    sectionHeader(english ? "Other discussion" : "Diğer konular") { appendManualTopic() }
+                    Text("Henüz elle eklenen bir konu yok.").font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
+    }
+
+    private func appendManualTopic() {
+        draft.topics.append(TopicNote(id: newID(), title: "", text: "", evidence: []))
+    }
+
+    private func binding(for topic: TopicNote) -> Binding<TopicNote> {
+        Binding(get: { draft.topics.first(where: { $0.id == topic.id }) ?? topic }, set: { value in
+            if let index = draft.topics.firstIndex(where: { $0.id == topic.id }) { draft.topics[index] = value }
+        })
+    }
+
+    private func topicEditor(_ topic: Binding<TopicNote>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                sourceLabel(topic.wrappedValue.evidence)
+                Spacer()
+                removeButton { draft.topics.removeAll { $0.id == topic.wrappedValue.id } }
+            }
+            TextField("Konu başlığı", text: topic.title).textFieldStyle(.roundedBorder)
+            editor(topic.text, height: 80).accessibilityLabel("Konu açıklaması")
+        }.padding(12).background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func sectionHeader(_ title: String, add: @escaping () -> Void) -> some View {

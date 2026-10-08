@@ -104,6 +104,7 @@ struct MeetingNotesVersion: Codable, Equatable {
     var notesManualEdits: NotesManualEdits?
     var reviewedAt: Date?
     var templateRawValue: String?
+    var notesTemplateRawValue: String?
     var outputLanguage: String?
     var transcriptFingerprint: String?
 
@@ -117,6 +118,7 @@ struct MeetingNotesVersion: Codable, Equatable {
         notesManualEdits = meeting.notesManualEdits
         reviewedAt = meeting.reviewedAt
         templateRawValue = meeting.templateRawValue
+        notesTemplateRawValue = meeting.notesTemplateRawValue
         outputLanguage = meeting.outputLanguage
         transcriptFingerprint = Self.fingerprint(of: meeting)
     }
@@ -184,6 +186,7 @@ enum MeetingExport {
     static func document(_ meeting: Meeting, options: MeetingShareOptions) -> MeetingShareDocument {
         var blocks: [MeetingExportBlock] = []
         let includesTranscript = options.scope == .fullTranscript
+        let presentation = MeetingNotesPresentation(meeting: meeting)
         func append(_ kind: MeetingExportBlock.Kind, _ text: String, markdown: String? = nil) {
             blocks.append(MeetingExportBlock(kind: kind, text: text, markdown: markdown ?? text))
         }
@@ -209,8 +212,8 @@ enum MeetingExport {
             heading(title)
             values.forEach(bullet)
         }
-        func actions(_ notes: MeetingNotes) {
-            heading("Aksiyonlar")
+        func actions(_ notes: MeetingNotes, title: String) {
+            heading(title)
             if notes.actions.isEmpty { append(.paragraph, "Bu toplantıda kaydedilmiş aksiyon bulunmuyor.") }
             for item in notes.actions {
                 let done = meeting.completedActions.contains(item.id)
@@ -233,22 +236,28 @@ enum MeetingExport {
             if meeting.notesEngine == ProcessingMode.local.rawValue {
                 notice("Notlar Apple’ın yerel modeliyle oluşturuldu. Kaynaklar kontrol edilmelidir.")
             }
-            if meeting.notesNeedRefresh { notice("Transkript değiştirildi. Bu özet eski sürüme dayanıyor; yeniden oluşturulmalı.") }
+            if meeting.notesNeedRefresh { notice("Transkript, özet dili veya şablon değişti. Bu özet eski sürüme dayanıyor; yeniden oluşturulmalı.") }
             if meeting.notesAreReviewed, let reviewedAt = meeting.reviewedAt {
                 append(.metadata, "Kullanıcı tarafından gözden geçirildi · \(reviewedAt.formatted(date: .abbreviated, time: .shortened))")
             }
-            if options.scope != .actions {
-                heading("Kısa özet")
-                append(.paragraph, notes.summary)
-                items("Kararlar", notes.decisions)
-            }
-            if options.scope != .summary { actions(notes) }
-            if options.scope != .actions {
-                items("Açık sorular", notes.questions)
-                items("Değerlendirilen fikirler", notes.ideas)
-                for topic in notes.topics {
-                    heading(topic.title, level: 3)
-                    append(.paragraph, topic.text + evidence(topic.evidence, links: false), markdown: topic.text + evidence(topic.evidence, links: includesTranscript))
+            append(.metadata, "Not düzeni: \(presentation.template.label)")
+            if let message = presentation.templateChangeMessage { notice(message) }
+            for section in presentation.sections(for: options.scope) {
+                switch section.kind {
+                case .summary:
+                    heading(section.title)
+                    append(.paragraph, notes.summary)
+                case .decisions: items(section.title, notes.decisions)
+                case .actions: actions(notes, title: section.title)
+                case .questions: items(section.title, notes.questions)
+                case .ideas: items(section.title, notes.ideas)
+                case .contexts:
+                    heading(section.title)
+                    if let message = section.emptyMessage { append(.paragraph, message) }
+                    for topic in section.topics {
+                        heading(topic.title, level: 3)
+                        append(.paragraph, topic.text + evidence(topic.evidence, links: false), markdown: topic.text + evidence(topic.evidence, links: includesTranscript))
+                    }
                 }
             }
         } else if options.scope == .actions {

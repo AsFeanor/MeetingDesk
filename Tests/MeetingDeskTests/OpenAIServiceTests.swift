@@ -86,6 +86,53 @@ final class OpenAIServiceTests: XCTestCase {
         } catch { XCTAssertTrue(error.localizedDescription.contains("kaynak bağlantıları")) }
     }
 
+    func testStructuredTemplateTopicsRemainContextAndPreserveSelectedSections() async throws {
+        for template in MeetingTemplate.allCases {
+            var meeting = Self.meeting
+            meeting.templateRawValue = template.rawValue
+            let section = try XCTUnwrap(template.contextSections.first?.id)
+            let expected = MeetingNotes(summary: "A synthetic discussion.", decisions: [], actions: [], questions: [], ideas: [],
+                                        topics: [.init(id: "topic-1", title: "Context", text: "An option was discussed.", evidence: ["seg-b"], sectionID: section)])
+            OpenAIStubProtocol.handler = { request in
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: Self.requestBody(request)) as? [String: Any])
+                let format = try XCTUnwrap(body["response_format"] as? [String: Any])
+                let specification = try XCTUnwrap(format["json_schema"] as? [String: Any])
+                let schema = try XCTUnwrap(specification["schema"] as? [String: Any])
+                let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+                let topics = try XCTUnwrap(properties["topics"] as? [String: Any])
+                let topic = try XCTUnwrap(topics["items"] as? [String: Any])
+                XCTAssertEqual(Set(try XCTUnwrap(topic["required"] as? [String])), Set(["id", "title", "text", "evidence", "sectionID"]))
+                XCTAssertEqual(topic["additionalProperties"] as? Bool, false)
+                let topicProperties = try XCTUnwrap(topic["properties"] as? [String: Any])
+                let sectionSchema = try XCTUnwrap(topicProperties["sectionID"] as? [String: Any])
+                let allowed = try XCTUnwrap(sectionSchema["enum"] as? [Any])
+                XCTAssertEqual(Set(allowed.compactMap { $0 as? String }), Set(template.contextSections.map(\.id)))
+                XCTAssertEqual(allowed.filter { $0 is NSNull }.count, 1)
+                let messages = try XCTUnwrap(body["messages"] as? [[String: String]])
+                XCTAssertTrue(try XCTUnwrap(messages.first?["content"]).contains(template.generationGuidance))
+                return (200, try Self.completion(expected))
+            }
+            let result = try await OpenAIService(apiKey: "test-key", session: session).summarize(meeting: meeting)
+            XCTAssertEqual(result, expected)
+            XCTAssertTrue(result.decisions.isEmpty, "Discussion context must not be promoted to a decision")
+            XCTAssertTrue(result.actions.isEmpty, "Discussion context must not be promoted to an assigned action")
+        }
+    }
+
+    func testMissingOrUnknownTemplateSectionsAreRejectedAtGenerationBoundary() async throws {
+        var meeting = Self.meeting
+        meeting.templateRawValue = MeetingTemplate.customer.rawValue
+        for section in [nil, "progress", "invented-section"] as [String?] {
+            let notes = MeetingNotes(summary: "Özet", decisions: [], actions: [], questions: [], ideas: [],
+                                     topics: [.init(id: "topic-1", title: "Context", text: "An option was discussed.", evidence: ["seg-b"], sectionID: section)])
+            OpenAIStubProtocol.handler = { _ in (200, try Self.completion(notes)) }
+            do {
+                _ = try await OpenAIService(apiKey: "test-key", session: session).summarize(meeting: meeting)
+                XCTFail("Generated nongeneral topics need a valid section assignment")
+            } catch { XCTAssertTrue(error.localizedDescription.contains("şablon")) }
+        }
+    }
+
     func testInventedCalendarDateAndOwnerAreRejected() async throws {
         for action in [ActionItem(id: "a1", text: "Kaldırın", owner: nil, due: "2026-10-09", evidence: ["seg-a"]),
                        ActionItem(id: "a1", text: "Kaldırın", owner: "Alice", due: nil, evidence: ["seg-a"])] {

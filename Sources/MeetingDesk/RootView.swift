@@ -77,7 +77,7 @@ struct RootView: View {
         .sheet(isPresented: $store.showSettings) { SettingsView(store: store) }
         .sheet(isPresented: $showImport) { ImportTranscriptView(store: store) }
         .sheet(isPresented: $store.showMicrophoneCheck) { MicrophoneCheckView(store: store) }
-        .sheet(item: $sharingMeeting) { SharingView(meeting: $0) }
+        .sheet(item: $sharingMeeting) { SharingView(meeting: $0, notion: store.notion) }
         .sheet(item: $editingMeeting) { meeting in
             NotesEditingView(meeting: meeting) { notes in
                 try store.saveEditedNotes(notes, meetingID: meeting.id)
@@ -143,7 +143,7 @@ struct RootView: View {
                 }
                 HStack(spacing: 12) {
                     Picker("Toplantı şablonu", selection: Binding(get: { meeting.template }, set: { template in
-                        store.update(meeting.id) { $0.templateRawValue = template.rawValue; $0.notesNeedRefresh = $0.notes != nil }
+                        store.setTemplate(template, for: meeting.id)
                     })) {
                         ForEach(MeetingTemplate.allCases) { Text($0.label).tag($0) }
                     }.frame(width: 270).disabled(store.workInProgress)
@@ -265,16 +265,17 @@ struct RootView: View {
     }
 
     private func overview(_ meeting: Meeting) -> some View {
-        ScrollView {
+        let presentation = MeetingNotesPresentation(meeting: meeting)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 if !meeting.segments.isEmpty {
                     HStack(spacing: 10) {
                         Text("Özet dili").font(.caption).foregroundStyle(.secondary)
-                        Picker("Özet dili", selection: Binding(get: { meeting.outputLanguage }, set: { language in store.update(meeting.id) { $0.outputLanguage = language; $0.notesNeedRefresh = $0.notes != nil } })) {
+                        Picker("Özet dili", selection: Binding(get: { meeting.outputLanguage }, set: { language in store.setOutputLanguage(language, for: meeting.id) })) {
                             Text("Türkçe").tag("Türkçe"); Text("English").tag("English")
                         }.labelsHidden().frame(width: 130)
                         Spacer()
-                    }.disabled(store.isBusy)
+                    }.disabled(store.workInProgress)
                 }
                 if let notes = meeting.notes {
                     HStack {
@@ -286,49 +287,13 @@ struct RootView: View {
                         Button(meeting.reviewedAt == nil ? "Kontrol edildi olarak işaretle" : "İşareti kaldır") { store.markNotesReviewed(meeting.id) }
                             .disabled(store.workInProgress || meeting.notesNeedRefresh)
                     }.font(.caption)
-                    if meeting.notesNeedRefresh { Label("Döküm veya şablon değişti. Özeti yenileyip kaynakları kontrol et; düzeltmelerin korunur.", systemImage: "arrow.clockwise").font(.callout).foregroundStyle(.orange) }
-                    sectionTitle("Kısa özet", icon: "text.alignleft")
-                    Text(notes.summary).font(.body).lineSpacing(5).textSelection(.enabled)
-                    if !notes.decisions.isEmpty {
-                        sectionTitle("Kararlar", icon: "checkmark.seal")
-                        ForEach(notes.decisions) { item in itemRow(item.text, evidence: item.evidence, meeting: meeting) }
+                    if meeting.notesNeedRefresh { Label("Transkript, özet dili veya şablon değişti. Özeti yenileyip kaynakları kontrol et; düzeltmelerin korunur.", systemImage: "arrow.clockwise").font(.callout).foregroundStyle(.orange) }
+                    Text("Not düzeni: \(presentation.template.label)").font(.caption).foregroundStyle(.secondary)
+                    if let message = presentation.templateChangeMessage {
+                        Label(message, systemImage: "rectangle.3.group").font(.callout).foregroundStyle(.orange)
                     }
-                    if !notes.actions.isEmpty {
-                        sectionTitle("Aksiyonlar", icon: "checklist")
-                        ForEach(notes.actions) { action in
-                            HStack(alignment: .top, spacing: 12) {
-                                Toggle("Tamamlandı", isOn: Binding(get: { store.meetings.first { $0.id == meeting.id }?.completedActions.contains(action.id) ?? false }, set: { done in store.update(meeting.id) { if done { $0.completedActions.insert(action.id) } else { $0.completedActions.remove(action.id) } } }))
-                                    .toggleStyle(.checkbox).labelsHidden().help("Aksiyonu tamamlandı olarak işaretle")
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text(action.text).strikethrough(meeting.completedActions.contains(action.id)).textSelection(.enabled)
-                                    Text("Sorumlu: \(action.owner ?? "Belirtilmedi") · Tarih: \(action.due ?? "Belirtilmedi")").font(.caption).foregroundStyle(.secondary)
-                                    evidenceButtons(action.evidence, meeting: meeting)
-                                }
-                                Spacer(minLength: 0)
-                            }.padding(14).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-                        }
-                    }
-                    if !notes.questions.isEmpty {
-                        sectionTitle("Açık sorular", icon: "questionmark.circle")
-                        ForEach(notes.questions) { item in itemRow(item.text, evidence: item.evidence, meeting: meeting) }
-                    }
-                    if !notes.ideas.isEmpty {
-                        sectionTitle("Değerlendirilen fikirler", icon: "lightbulb")
-                        Text("Bu maddeler kesinleşmiş karar ya da atanmış görev değildir.").font(.caption).foregroundStyle(.secondary)
-                        ForEach(notes.ideas) { item in itemRow(item.text, evidence: item.evidence, meeting: meeting) }
-                    }
-                    if !notes.topics.isEmpty {
-                        DisclosureGroup("Konu bazında ayrıntılar") {
-                            VStack(alignment: .leading, spacing: 16) {
-                                ForEach(notes.topics) { topic in
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text(topic.title).font(.headline)
-                                        Text(topic.text).textSelection(.enabled)
-                                        evidenceButtons(topic.evidence, meeting: meeting)
-                                    }
-                                }
-                            }.padding(.top, 14)
-                        }
+                    ForEach(presentation.sections) { section in
+                        overviewSection(section, notes: notes, meeting: meeting)
                     }
                     Divider()
                     Text("Otomatik not, toplantıda söylenenleri aktarır. Konuşmacıları ve kararların kaynaklarını kontrol et.").font(.caption).foregroundStyle(.secondary)
@@ -344,6 +309,54 @@ struct RootView: View {
                     }.padding(.vertical, 40)
                 }
             }.padding(28).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func overviewSection(_ section: MeetingNotesPresentedSection, notes: MeetingNotes, meeting: Meeting) -> some View {
+        switch section.kind {
+        case .summary:
+            sectionTitle(section.title, icon: "text.alignleft")
+            Text(notes.summary).font(.body).lineSpacing(5).textSelection(.enabled)
+        case .decisions:
+            sectionTitle(section.title, icon: "checkmark.seal")
+            ForEach(notes.decisions) { item in itemRow(item.text, evidence: item.evidence, meeting: meeting) }
+        case .actions:
+            sectionTitle(section.title, icon: "checklist")
+            if notes.actions.isEmpty {
+                Text("Bu toplantıda kaydedilmiş aksiyon bulunmuyor.").font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(notes.actions) { action in
+                HStack(alignment: .top, spacing: 12) {
+                    Toggle("Tamamlandı", isOn: Binding(get: { store.meetings.first { $0.id == meeting.id }?.completedActions.contains(action.id) ?? false }, set: { done in store.update(meeting.id) { if done { $0.completedActions.insert(action.id) } else { $0.completedActions.remove(action.id) } } }))
+                        .toggleStyle(.checkbox).labelsHidden().help("Aksiyonu tamamlandı olarak işaretle")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(action.text).strikethrough(meeting.completedActions.contains(action.id)).textSelection(.enabled)
+                        Text("Sorumlu: \(action.owner ?? "Belirtilmedi") · Tarih: \(action.due ?? "Belirtilmedi")").font(.caption).foregroundStyle(.secondary)
+                        evidenceButtons(action.evidence, meeting: meeting)
+                    }
+                    Spacer(minLength: 0)
+                }.padding(14).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+            }
+        case .questions:
+            sectionTitle(section.title, icon: "questionmark.circle")
+            ForEach(notes.questions) { item in itemRow(item.text, evidence: item.evidence, meeting: meeting) }
+        case .ideas:
+            sectionTitle(section.title, icon: "lightbulb")
+            Text("Bu maddeler kesinleşmiş karar ya da atanmış görev değildir.").font(.caption).foregroundStyle(.secondary)
+            ForEach(notes.ideas) { item in itemRow(item.text, evidence: item.evidence, meeting: meeting) }
+        case .contexts:
+            sectionTitle(section.title, icon: "text.bubble")
+            if let message = section.emptyMessage {
+                Text(message).font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(section.topics) { topic in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(topic.title).font(.headline)
+                    Text(topic.text).textSelection(.enabled)
+                    evidenceButtons(topic.evidence, meeting: meeting)
+                }
+            }
         }
     }
 
@@ -493,6 +506,18 @@ private struct SettingsView: View {
             Toggle("Kaydı bitirince transkript ve özeti Mac’te hazırla", isOn: $store.automaticLocalProcessing)
                 .disabled(store.workInProgress || store.processingMode != .local)
             Text("Yalnız Mac’te ücretsiz modunda çalışır. Özet hazırlanamazsa oluşturulmuş transkript saklanır; işlemi iptal edebilirsin.").font(.caption).foregroundStyle(.secondary)
+            Divider()
+            Text("Toplantı hatırlatıcısı").font(.headline)
+            Toggle("Toplantıda olabileceğimi algıla ve kaydı hatırlat", isOn: $store.meetingDetectionEnabled)
+            Text("Zoom, Teams, Webex, FaceTime ve Slack’in mikrofon kullanımı kontrol edilir. Tarayıcıda mikrofon kullanımıyla birlikte görünür bir toplantı penceresi gerekir; mevcut ekran iznin yoksa bu kontrol yapılmaz. Ses dinlenmez veya kaydedilmez. Mikrofon kapalı görüşmeler algılanmayabilir.")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("Hatırlatıcı kaydı kendiliğinden başlatmaz. ‘Kayda başla’ düğmesine bastığında normal kayıt izinleri ve seçili mikrofon kullanılır.")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("Kayıt sırasında küçük kontrol kartını göster", isOn: $store.showRecordingPanel)
+            Text("Karttan süreyi ve ses göstergelerini izleyebilir, duraklatabilir veya bitirip saklayabilirsin. Kartı gizlersen kayıt sürer; menü çubuğundan tekrar açabilirsin.")
+                .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            NotionConnectionView(connection: store.notion)
             Divider()
             Text("Kayıt için macOS mikrofon ve ekran/sistem sesi kayıt izni ister. Uygulama ekran görüntüsü veya video saklamaz.").font(.callout).foregroundStyle(.secondary)
             Button("Yerel toplantı arşivini aç") { store.revealArchive() }

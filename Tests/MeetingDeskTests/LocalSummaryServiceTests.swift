@@ -103,6 +103,54 @@ final class LocalSummaryServiceTests: XCTestCase {
         XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes, meeting: meeting))
     }
 
+    func testNewTemplateTopicsRequireAValidSectionWithoutChangingLegacyValidation() throws {
+        for template in MeetingTemplate.allCases where template != .general {
+            var meeting = sampleMeeting()
+            meeting.templateRawValue = template.rawValue
+            var notes = blankNotes()
+            notes.topics = [TopicNote(id: "t1", title: "Context", text: "Design revision was discussed.", evidence: ["s1"])]
+            XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting), "Older notes remain readable")
+            XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes, meeting: meeting, requireTemplateSections: true))
+            notes.topics[0].sectionID = try XCTUnwrap(template.contextSections.first?.id)
+            XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting, requireTemplateSections: true))
+            notes.topics[0].sectionID = "invented-section"
+            XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes, meeting: meeting, requireTemplateSections: true))
+        }
+    }
+
+    func testGeneralLegacyTopicAndEmptyTemplateCategoriesRemainValid() throws {
+        var meeting = sampleMeeting()
+        var notes = blankNotes()
+        notes.topics = [TopicNote(id: "t1", title: "Context", text: "Design revision was discussed.", evidence: ["s1"])]
+        XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting, requireTemplateSections: true))
+        notes.topics[0].sectionID = "discussion"
+        XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting, requireTemplateSections: true))
+        notes.topics[0].sectionID = "progress"
+        XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes, meeting: meeting, requireTemplateSections: true))
+        meeting.templateRawValue = MeetingTemplate.customer.rawValue
+        notes.topics = []
+        XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting, requireTemplateSections: true),
+                         "Templates must not fabricate context just to fill a category")
+    }
+
+    func testLongMeetingCombinationRetainsTemplateSectionsAndEvidence() throws {
+        var meeting = sampleMeeting()
+        meeting.templateRawValue = MeetingTemplate.team.rawValue
+        let sources = try LocalSummaryService.sourceChunks(meeting: meeting)
+        var first = blankNotes()
+        first.topics = [TopicNote(id: "local-1-1", title: "Progress", text: "The design revision was discussed.", evidence: ["s1"], sectionID: "progress")]
+        var second = blankNotes()
+        second.topics = [TopicNote(id: "local-2-1", title: "Blocker", text: "The design needs further discussion.", evidence: ["s1"], sectionID: "blockers")]
+        let notes = LocalSummaryService.combine([first, second], sources: [sources[0], sources[0]], english: true)
+        XCTAssertEqual(notes.topics.map(\.sectionID), ["progress", "blockers"])
+        XCTAssertEqual(notes.topics.map(\.evidence), [["s1"], ["s1"]])
+        XCTAssertTrue(notes.topics[0].title.contains("Section 1"))
+        XCTAssertTrue(notes.topics[1].title.contains("Section 2"))
+        XCTAssertTrue(notes.actions.isEmpty)
+        XCTAssertTrue(notes.decisions.isEmpty)
+        XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting, requireTemplateSections: true))
+    }
+
     private func sampleMeeting() -> Meeting {
         Meeting(title: "Synthetic", segments: [TranscriptSegment(id: "s1", speaker: "A", start: 0, end: 5,
             text: "Ali will revise the design by next Friday.")])

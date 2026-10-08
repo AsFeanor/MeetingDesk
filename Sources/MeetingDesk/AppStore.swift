@@ -15,6 +15,16 @@ final class AppStore: ObservableObject {
     @Published var automaticLocalProcessing = UserDefaults.standard.bool(forKey: "meetingdesk.automaticLocalProcessing") {
         didSet { UserDefaults.standard.set(automaticLocalProcessing, forKey: "meetingdesk.automaticLocalProcessing") }
     }
+    @Published var meetingDetectionEnabled = UserDefaults.standard.bool(forKey: "meetingdesk.meetingDetectionEnabled") {
+        didSet {
+            UserDefaults.standard.set(meetingDetectionEnabled, forKey: "meetingdesk.meetingDetectionEnabled")
+            guard systemServicesEnabled else { return }
+            if meetingDetectionEnabled { meetingDetector.start() } else { meetingDetector.stop() }
+        }
+    }
+    @Published var showRecordingPanel = UserDefaults.standard.object(forKey: "meetingdesk.showRecordingPanel") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showRecordingPanel, forKey: "meetingdesk.showRecordingPanel") }
+    }
     @Published var hasKey = false
     @Published var processingMode: ProcessingMode = ProcessingMode(rawValue: UserDefaults.standard.string(forKey: "meetingdesk.processingMode") ?? "") ?? .local {
         didSet { UserDefaults.standard.set(processingMode.rawValue, forKey: "meetingdesk.processingMode") }
@@ -41,6 +51,9 @@ final class AppStore: ObservableObject {
     @Published private(set) var defaultMicrophoneName = "Mac’in varsayılan mikrofonu"
     let recorder = AudioRecorder()
     let updates = AppUpdater()
+    let notion: NotionConnection
+    let meetingDetector = MeetingDetector()
+    let systemServicesEnabled: Bool
     private var updateSubscriptions: Set<AnyCancellable> = []
     let library: MeetingLibrary
     private var recordingID: UUID?
@@ -51,7 +64,7 @@ final class AppStore: ObservableObject {
     private var isFinishingRecording = false
 
     var hasPendingRecordingSession: Bool { recordingID != nil }
-    var workInProgress: Bool { isBusy || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession }
+    var workInProgress: Bool { isBusy || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession || notion.isExporting }
     var selected: Meeting? { meetings.first { $0.id == selectedID } }
     var recordingMeeting: Meeting? { meetings.first { $0.id == recordingID } }
     var hasPreviousTranscript: Bool { selected.map { library.hasTranscriptVersion(for: $0.id) } ?? false }
@@ -70,6 +83,14 @@ final class AppStore: ObservableObject {
     func setSpeechLanguage(_ language: String, for id: UUID) {
         update(id) { $0.speechLanguage = language }
     }
+    func setTemplate(_ template: MeetingTemplate, for id: UUID) {
+        guard !workInProgress, let meeting = meetings.first(where: { $0.id == id }), meeting.template != template else { return }
+        update(id) { $0.templateRawValue = template.rawValue; $0.notesNeedRefresh = $0.notes != nil }
+    }
+    func setOutputLanguage(_ language: String, for id: UUID) {
+        guard !workInProgress, let meeting = meetings.first(where: { $0.id == id }), meeting.outputLanguage != language else { return }
+        update(id) { $0.outputLanguage = language; $0.notesNeedRefresh = $0.notes != nil }
+    }
     var selectedRecoveryURL: URL? {
         guard let selected else { return nil }
         let folder = library.directory(for: selected.id)
@@ -84,23 +105,31 @@ final class AppStore: ObservableObject {
         return destination
     }
 
-    init(root: URL? = nil, initializeSystemServices: Bool = true) {
+    init(root: URL? = nil, initializeSystemServices: Bool = true, notionConnection: NotionConnection? = nil) {
         #if DEBUG
         let previewRoot = (Bundle.main.object(forInfoDictionaryKey: "MeetingDeskPreviewArchive") as? String).map { URL(fileURLWithPath: $0, isDirectory: true) }
         #else
         let previewRoot: URL? = nil
         #endif
+        systemServicesEnabled = initializeSystemServices && previewRoot == nil
+        notion = notionConnection ?? NotionConnection(loadCredentials: systemServicesEnabled)
         library = MeetingLibrary(root: root ?? previewRoot)
         reload()
         if initializeSystemServices && previewRoot == nil { refreshKey(); refreshMicrophones() }
-        Publishers.CombineLatest3(recorder.$isRecording, $isBusy, $showMicrophoneCheck)
-            .map { recording, busy, checking in recording || busy || checking }
+        Publishers.CombineLatest4(recorder.$isRecording, $isBusy, $showMicrophoneCheck, notion.$isExporting)
+            .map { recording, busy, checking, exporting in recording || busy || checking || exporting }
             .removeDuplicates()
             .sink { [weak self] busy in
                 guard let self else { return }
-                self.updates.setWorkInProgress(busy || self.hasPendingRecordingSession)
+                let active = busy || self.hasPendingRecordingSession
+                self.updates.setWorkInProgress(active)
+                self.meetingDetector.setSuspended(active)
             }
             .store(in: &updateSubscriptions)
+        notion.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &updateSubscriptions)
+        if systemServicesEnabled && meetingDetectionEnabled { meetingDetector.start() }
         recorder.onFailure = { [weak self] error in
             guard let self else { return }
             self.errorMessage = "Kayıt kesildi: \(error.localizedDescription). Kaydedilmiş bölüm korunuyor."
@@ -171,6 +200,7 @@ final class AppStore: ObservableObject {
     func startRecording() async {
         guard !workInProgress else { return }
         stopPlayback()
+        meetingDetector.dismissCurrentMeeting()
         let meeting = selected.flatMap { $0.audioFileName == nil && $0.segments.isEmpty ? $0 : nil } ?? newMeeting()
         selectedID = meeting.id
         recordingID = meeting.id
@@ -282,10 +312,11 @@ final class AppStore: ObservableObject {
                 $0.transcribedLanguage = previous.transcribedLanguage
                 $0.notes = previous.notes
                 $0.notesEngine = previous.notesEngine
-                $0.notesNeedRefresh = previous.notesNeedRefresh
+                $0.notesTemplateRawValue = previous.notesTemplateRawValue
+                $0.notesNeedRefresh = previous.notesNeedRefresh || previous.notesTemplate != meeting.template || previous.outputLanguage != meeting.outputLanguage
                 $0.completedActions = previous.completedActions
                 $0.notesManualEdits = previous.notesManualEdits
-                $0.reviewedAt = previous.reviewedAt
+                $0.reviewedAt = $0.notesNeedRefresh ? nil : previous.reviewedAt
                 $0.transcriptSourceSeparated = previous.transcriptSourceSeparated
             }) else { throw MeetingError.message("Önceki döküm kaydedilemedi; mevcut döküm korundu.") }
             statusMessage = "Önceki döküm geri getirildi. Ses kaydı ve kişisel notlar korundu."
@@ -325,11 +356,29 @@ final class AppStore: ObservableObject {
             notes = try await service.summarize(meeting: meeting)
         }
         try Task.checkCancellation()
-        guard let current = meetings.first(where: { $0.id == id }) else { return }
-        if current.notes != nil { try library.saveNotesVersion(current) }
-        let reconciled = NotesRevisionPolicy.reconcileGenerated(notes, into: current, engine: mode.rawValue)
-        guard update(id, { $0 = reconciled }) else { throw MeetingError.message("Toplantı notları kaydedilemedi. Önceki notlar korunuyor.") }
+        try commitGeneratedNotes(notes, sourceMeeting: meeting, engine: mode.rawValue)
         statusMessage = "Toplantı notu hazır. Düzeltmeler ve tamamlanan görevler korundu; kaynakları kontrol edebilirsin."
+    }
+
+    /// Commit only against the input that was actually summarized. UI disabling
+    /// alone cannot protect an asynchronous result from source/config changes.
+    func commitGeneratedNotes(_ notes: MeetingNotes, sourceMeeting: Meeting, engine: String) throws {
+        guard let current = meetings.first(where: { $0.id == sourceMeeting.id }) else {
+            throw MeetingError.message("Özetin toplantısı bulunamadı; önceki notlar korundu.")
+        }
+        guard current.template == sourceMeeting.template,
+              current.outputLanguage == sourceMeeting.outputLanguage,
+              current.segments == sourceMeeting.segments,
+              current.speakerNames == sourceMeeting.speakerNames,
+              current.title == sourceMeeting.title else {
+            throw MeetingError.message("Özet hazırlanırken transkript, başlık, özet dili veya şablon değişti. Eski ayarlara göre hazırlanan özet kaydedilmedi; yeniden oluşturabilirsin.")
+        }
+        if current.notes != nil { try library.saveNotesVersion(current) }
+        var reconciled = NotesRevisionPolicy.reconcileGenerated(notes, into: current, engine: engine)
+        reconciled.notesTemplateRawValue = sourceMeeting.template.rawValue
+        guard update(current.id, { $0 = reconciled }) else {
+            throw MeetingError.message("Toplantı notları kaydedilemedi. Önceki notlar korunuyor.")
+        }
     }
 
     func saveEditedNotes(_ notes: MeetingNotes, meetingID: UUID) throws {
@@ -359,7 +408,7 @@ final class AppStore: ObservableObject {
                 $0.notes = previous.notes; $0.completedActions = previous.completedActions
                 $0.notesNeedRefresh = previous.notesNeedRefresh || !previous.matchesTranscript(of: meeting); $0.notesEngine = previous.notesEngine
                 $0.notesManualEdits = previous.notesManualEdits; $0.reviewedAt = previous.matchesTranscript(of: meeting) ? previous.reviewedAt : nil
-                $0.templateRawValue = previous.templateRawValue; $0.outputLanguage = previous.outputLanguage ?? $0.outputLanguage
+                $0.templateRawValue = previous.templateRawValue; $0.notesTemplateRawValue = previous.notesTemplateRawValue; $0.outputLanguage = previous.outputLanguage ?? $0.outputLanguage
             }) else { throw MeetingError.message("Önceki not sürümü kaydedilemedi; mevcut notlar korundu.") }
             statusMessage = "Önceki toplantı notu geri getirildi. Transkript ve ses kaydı korundu."
         } catch { errorMessage = error.localizedDescription }
