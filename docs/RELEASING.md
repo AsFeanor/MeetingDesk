@@ -54,7 +54,7 @@ Ortam değişkenleri `UPDATE_REPOSITORY`, `SU_FEED_URL`, `SU_PUBLIC_ED_KEY`, `PR
 
 ## İlk güncellenebilir sürüm
 
-`Packaging/Info.plist` içindeki `CFBundleShortVersionString` kullanıcıya görünen sürüm, `CFBundleVersion` artan tam sayı yapı numarasıdır. İlk kurulum için doğrulanmış güncel sürüm `0.3.1` / yapı `6` yayımlandı. Kaynak kod etiketi ve indirilebilir paket aynı sürüme karşılık gelir.
+`Packaging/Info.plist` içindeki `CFBundleShortVersionString` kullanıcıya görünen sürüm, `CFBundleVersion` artan tam sayı yapı numarasıdır. İlk güncellenebilir sürüm `0.3.1` / yapı `6` idi. Güncel kararlı sürüm `0.4.0` / yapı `7` yayımlandı. Kaynak kod etiketi ve indirilebilir paket aynı sürüme karşılık gelir.
 
 ```sh
 zsh Packaging/build.sh dist/bootstrap
@@ -63,7 +63,7 @@ python3 Packaging/release.py publish --app dist/bootstrap/Toplanti.app --bootstr
 
 GitHub CLI yayınlayacak hesaba giriş yapmış olmalıdır. Yerel yayın imzası Anahtar Zinciri'nden okunur; araç özel anahtarı dosyaya yazmaz veya komut satırına koymaz. Kod deposundan farklı depo seçilecekse `--update-repo OWNER/MeetingDesk-Updates` kullanılabilir; bu değer uygulamaya gömülen yapılandırmayla eşleşmelidir.
 
-Mevcut 0.3.1 sürümünü GitHub Releases sayfasından indirip **bir kez** kalıcı uygulama klasörüne kurun. `--bootstrap` komutu yalnız ilk yayın içindir; mevcut bu depo için yeniden kullanılmaz. Daha önceki sürümlerde Sparkle bulunmadığından ilk geçiş elle yapılır. Sonraki güncellemeler aynı `Toplanti.app` adı ve `com.altugegesari.meetingdesk` kimliğiyle dağıtılmalıdır. Arşiv konumu değiştirilmez.
+En güncel kararlı sürümü GitHub Releases sayfasından indirip **bir kez** kalıcı uygulama klasörüne kurun. `--bootstrap` komutu yalnız ilk yayın içindir; mevcut bu depo için yeniden kullanılmaz. Daha önceki sürümlerde Sparkle bulunmadığından ilk geçiş elle yapılır. Sonraki güncellemeler aynı `Toplanti.app` adı ve `com.altugegesari.meetingdesk` kimliğiyle dağıtılmalıdır. Arşiv konumu değiştirilmez.
 
 ## Sonraki sürümler: yerel yayın
 
@@ -74,9 +74,9 @@ Mevcut 0.3.1 sürümünü GitHub Releases sayfasından indirip **bir kez** kalı
 5. Sürümün hazır olduğu doğrulandıktan sonra yayınlayın.
 
 ```sh
-zsh Packaging/build.sh dist/v0.3.2
-python3 Packaging/release.py publish --app dist/v0.3.2/Toplanti.app --prepare-only
-python3 Packaging/release.py publish --app dist/v0.3.2/Toplanti.app --notes-file docs/release-notes.md
+zsh Packaging/build.sh dist/v0.4.1
+python3 Packaging/release.py publish --app dist/v0.4.1/Toplanti.app --prepare-only
+python3 Packaging/release.py publish --app dist/v0.4.1/Toplanti.app --notes-file docs/release-notes.md
 ```
 
 `--prepare-only` GitHub'dan salt okunur depo/besleme bilgisi alır ve yerel ZIP'i imzalar; release oluşturmaz ve beslemeyi değiştirmez. Kamuya açık anahtar ile ZIP imzası ayrıca CryptoKit kullanılarak doğrulanır.
@@ -112,9 +112,9 @@ Otomatik yayın için kaynak deponun Actions secrets alanında:
 Tag'i göndermeden önce sürüm/yapı değerleri ve kamuya açık güncelleme yapılandırması commit edilmiş olmalıdır:
 
 ```sh
-git tag v0.3.2
+git tag v0.4.1
 git push origin main
-git push origin v0.3.2
+git push origin v0.4.1
 ```
 
 İlk Actions yayını için workflow'u elle çalıştırıp `bootstrap: true` seçin. Yerelde ilk release zaten yayımlandıysa bu seçenek kullanılmaz.

@@ -31,6 +31,10 @@ Güncelleme, uygulama paketini yeniler. Toplantı arşivi aynı yerde kalır:
 ~/Library/Application Support/MeetingDesk
 ```
 
+## 0.4.0 ile ilk deneme
+
+Yeni toplantıda **Sesimi kontrol et** düğmesiyle 10 saniye konuşup yalnız mikrofon sesini dinleyin. İsterseniz **Kaydı bitirince transkript ve özeti Mac’te hazırla** seçeneğini açın; bu özellik yalnız ücretsiz yerel modda çalışır. Şablonla özetin odağını seçebilir, **Notları düzenle** ile düzeltme yapabilir ve **Paylaş** önizlemesinden kişisel notları dahil etmeden PDF/metin çıktısı alabilirsiniz. [İş akışı rehberi](WORKFLOW.md).
+
 ## Kaynak koddan derleme
 
 Git ve Xcode 26.4+ ile macOS 26.4+ SDK gerekir:
