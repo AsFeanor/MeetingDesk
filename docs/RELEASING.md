@@ -100,7 +100,7 @@ Besleme en son tam paketi içerir; delta güncelleme üretilmez. `--bootstrap` b
 
 ## GitHub Actions
 
-`ci.yml` push/PR için test ve imzalı uygulama paketi oluşturur. `release.yml` `v*` kaynak tag'inde veya elle başlatıldığında test/build sonrası kararlı güncelleme yayınlar. Runner `macos-latest` kullanır ve macOS SDK'sının 26.4+ olduğunu açıkça kontrol eder. Runner'da yerel Apple Intelligence bulunması gerekmez; canlı model kalitesi ve gerçek ses kayıtları ayrı Mac denemesi gerektirir.
+`ci.yml` push/PR için test ve imzalı uygulama paketi oluşturur. Varsayılan yayın yolu bu Mac’in yerel Anahtar Zinciri’dir; GitHub Actions yayın imza sırrı tanımlı değildir. `release.yml` elle başlatılabilir. `v*` tag’inde otomatik yayın yalnız aşağıdaki secret’lar hazırlandıktan sonra `ENABLE_AUTOMATED_RELEASES=true` repository variable’ı açılırsa çalışır. Böylece yerelde yayımlanan bir sürüm için ikinci, yapılandırılmamış yayın görevi başlatılmaz. Runner `macos-latest` kullanır ve macOS SDK'sının 26.4+ olduğunu açıkça kontrol eder. Runner'da yerel Apple Intelligence bulunması gerekmez; canlı model kalitesi ve gerçek ses kayıtları ayrı Mac denemesi gerektirir.
 
 Otomatik yayın için kaynak deponun Actions secrets alanında:
 

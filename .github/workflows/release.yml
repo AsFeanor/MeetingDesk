@@ -27,6 +27,8 @@ concurrency:
 
 jobs:
   release:
+    # Local Keychain releases are the default. Opt in only after CI signing setup.
+    if: github.event_name == 'workflow_dispatch' || vars.ENABLE_AUTOMATED_RELEASES == 'true'
     runs-on: macos-latest
     timeout-minutes: 25
     env:

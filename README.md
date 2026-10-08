@@ -4,7 +4,7 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-[Yayımlanmış GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases) indirip uygulamayı bir kez Uygulamalar klasörüne taşıyın. Sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. Paket henüz görünmüyorsa kaynak koddan derleyebilirsiniz. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+Güncellenebilir sürüm **0.3.1** yayımlandı. [En güncel GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) indirip uygulamayı bir kez Uygulamalar klasörüne taşıyın. Sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
 
 ## Neler yapıyor?
 
@@ -44,7 +44,7 @@ Geliştirme sırasında bu depoda değişiklik yapıp test edin; kalıcı uygula
 
 ## Güncellemeler ve sürüm yayımlama
 
-Sürümler bu kaynak deposunun [GitHub Releases sayfasında](https://github.com/AsFeanor/MeetingDesk/releases) yayımlanır. Kamuya açık güncelleme adresi `https://github.com/AsFeanor/MeetingDesk/releases/latest/download/appcast.xml` olur. İmzalama özel anahtarı yerel Anahtar Zinciri'nde tutulur; yalnız kamuya açık anahtar ve besleme adresi uygulamaya eklenir. Yerel yayın için CI secret gerekmez. GitHub Actions ile otomatik imzalı yayın ayrıca ilgili secret yapılandırmasını gerektirir.
+Sürümler bu kaynak deposunun [GitHub Releases sayfasında](https://github.com/AsFeanor/MeetingDesk/releases) yayımlanır. Kamuya açık güncelleme adresi `https://github.com/AsFeanor/MeetingDesk/releases/latest/download/appcast.xml` olur. İmzalama özel anahtarı yerel Anahtar Zinciri'nde tutulur; yalnız kamuya açık anahtar ve besleme adresi uygulamaya eklenir. Yerel yayın için CI secret gerekmez. GitHub Actions ile otomatik imzalı yayın ayrıca ilgili secret yapılandırmasını ve `ENABLE_AUTOMATED_RELEASES=true` repository variable’ını gerektirir; varsayılan olarak kapalıdır.
 
 Sparkle güncelleme altyapısına sahip sürüm **bir kez kurulmalıdır**. Önceki sürümler bu altyapıyı içermediğinden kendilerini güncelleyemez. Sonraki sürümler uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle kurulur. Kayıt ve not işleme sırasında güncelleme kurulumu ertelenir.
 

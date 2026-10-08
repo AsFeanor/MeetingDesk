@@ -125,7 +125,7 @@ class ReleaseValidationTests(unittest.TestCase):
             run.assert_not_called()
             self.assertNotIn(secret, str(caught.exception))
 
-    def pipeline(self, *, private=False, fail_upload=False, fail_sign=False):
+    def pipeline(self, *, private=False, fail_upload=False, fail_sign=False, transient_urls=False):
         settings = self.settings(private)
         events = []
         state = {"draft": True, "assets": []}
@@ -146,7 +146,7 @@ class ReleaseValidationTests(unittest.TestCase):
                 if endpoint.endswith("/releases") and method == "GET":
                     return []
                 if endpoint.endswith("/releases") and method == "POST":
-                    return {"id": 100, "draft": True, "html_url": "https://github.com/example/MeetingDesk/releases/tag/v0.3.0"}
+                    return {"id": 100, "draft": True, "html_url": "https://github.com/example/MeetingDesk/releases/tag/" + ("untagged-draft-123" if transient_urls else "v0.3.0")}
                 if endpoint.endswith("/assets"):
                     return list(state["assets"])
                 if method == "PATCH":
@@ -172,10 +172,18 @@ class ReleaseValidationTests(unittest.TestCase):
                     asset_path = Path(command[4])
                     state["assets"].append({"id": 123 if asset_path.suffix == ".zip" else 124,
                                             "name": asset_path.name,
-                                            "browser_download_url": "https://github.com/example/MeetingDesk/releases/download/v0.3.0/" + asset_path.name})
+                                            "browser_download_url": "https://github.com/example/MeetingDesk/releases/download/" + ("untagged-draft-123" if transient_urls else "v0.3.0") + "/" + asset_path.name})
                 return ""
 
             def sign(arguments):
+                if transient_urls and not private and len(arguments) == 1:
+                    feed = ET.fromstring(Path(arguments[0]).read_bytes())
+                    expected_release = "https://github.com/example/MeetingDesk/releases/tag/v0.3.0"
+                    expected_archive = "https://github.com/example/MeetingDesk/releases/download/v0.3.0/Toplanti-0.3.0.zip"
+                    self.assertEqual(feed.find("channel/item/enclosure").attrib["url"], expected_archive)
+                    self.assertEqual(feed.find("channel/link").text, expected_release)
+                    self.assertEqual(feed.find("channel/item/link").text, expected_release)
+                    self.assertNotIn("untagged-", Path(arguments[0]).read_text())
                 if fail_sign:
                     raise release.ReleaseError("signing failed")
                 return SIGNATURE if "-p" in arguments else ""
@@ -189,6 +197,9 @@ class ReleaseValidationTests(unittest.TestCase):
                 else:
                     release.publish(args)
         return events
+
+    def test_public_feed_ignores_temporary_draft_asset_and_release_urls(self):
+        self.pipeline(transient_urls=True)
 
     def test_public_feed_uploaded_before_release_is_published(self):
         events = self.pipeline()

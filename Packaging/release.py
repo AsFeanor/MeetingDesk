@@ -287,10 +287,14 @@ def publish(args):
         run(["gh", "release", "upload", tag, archive, "--repo", repo])
         assets = gh_api(f"repos/{repo}/releases/{release['id']}/assets")
         asset = next(asset for asset in assets if asset["name"] == archive.name)
+    # Draft assets expose an untagged-... browser URL until publication.
+    # Build the stable tag URL before signing the atomic draft feed.
+    release_url = f"https://github.com/{repo}/releases/tag/{quote(tag, safe='')}"
     asset_url = (f"https://api.github.com/repos/{repo}/releases/assets/{asset['id']}"
-                 if settings["privateUpdates"] else asset["browser_download_url"])
+                 if settings["privateUpdates"] else
+                 f"https://github.com/{repo}/releases/download/{quote(tag, safe='')}/{quote(archive.name, safe='')}")
     feed = output / "appcast.xml"
-    feed.write_bytes(appcast_bytes(info, archive, signature, asset_url, release["html_url"], notes))
+    feed.write_bytes(appcast_bytes(info, archive, signature, asset_url, release_url, notes))
     sign([feed])
     sign(["--verify", feed])
     if feed_in_release:
