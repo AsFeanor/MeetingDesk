@@ -4,7 +4,7 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-Güncellenebilir sürüm **0.4.0** yayımlandı. [En güncel GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) indirip uygulamayı bir kez Uygulamalar klasörüne taşıyın. Sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+Güncellenebilir sürüm **0.5.0** yayımlandı. [En güncel GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) indirip uygulamayı bir kez Uygulamalar klasörüne taşıyın. Sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
 
 ## Neler yapıyor?
 
@@ -22,11 +22,11 @@ Güncellenebilir sürüm **0.4.0** yayımlandı. [En güncel GitHub sürümünü
 
 [İş akışı rehberi](docs/WORKFLOW.md).
 
-### 0.5.0 sürüm hazırlığı
+### 0.5.0 ile gelenler
 
 Notion’a doğrudan aktarım, isteğe bağlı toplantı hatırlatıcısı ve şablona göre bölüm düzeni eklendi. Şablon değişince yeni özet kullanılır; önceki elle yazılmış özet düzeltmesi ayrı bir konu notu olarak korunur. Uygulama, Markdown, PDF ve Notion aynı bölüm düzenini kullanır. Paylaşım ekranında seçilen içerik yerel Notion başlıkları/görev kutuları ve katlanabilir transkript olarak yeni bir alt sayfaya gönderilir. Bağlantı anahtarı bir kez Anahtar Zinciri’ne kaydedilir; ses gönderilmez.
 
-Toplantı hatırlatıcısı desteklenen uygulamanın mikrofon sinyaline bakar, kayıt başlatmaz. Kayıt kartından süre, iki ses göstergesi, duraklat/devam et ve bitir/sakla kullanılabilir. Algılama başlangıçta kapalıdır; mikrofon kapalı görüşmeler ve bazı tarayıcılar algılanmayabilir. Bu kodun ayrıntıları ve sınırları [iş akışı rehberinde](docs/WORKFLOW.md) açıklanır. Kararlı sürüm için yukarıdaki GitHub Releases bağlantısını kullanın.
+Toplantı hatırlatıcısı desteklenen uygulamanın mikrofon sinyaline bakar, kayıt başlatmaz. Kayıt kartından süre, iki ses göstergesi, duraklat/devam et ve bitir/sakla kullanılabilir. Algılama başlangıçta kapalıdır; mikrofon kapalı görüşmeler ve bazı tarayıcılar algılanmayabilir. Bu özelliklerin ayrıntıları ve sınırları [iş akışı rehberinde](docs/WORKFLOW.md) açıklanır. Kararlı sürüm için yukarıdaki GitHub Releases bağlantısını kullanın.
 
 ## Gereksinimler
 

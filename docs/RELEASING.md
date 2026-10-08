@@ -54,7 +54,7 @@ Ortam değişkenleri `UPDATE_REPOSITORY`, `SU_FEED_URL`, `SU_PUBLIC_ED_KEY`, `PR
 
 ## İlk güncellenebilir sürüm
 
-`Packaging/Info.plist` içindeki `CFBundleShortVersionString` kullanıcıya görünen sürüm, `CFBundleVersion` artan tam sayı yapı numarasıdır. İlk güncellenebilir sürüm `0.3.1` / yapı `6` idi. Güncel kararlı sürüm `0.4.0` / yapı `7` yayımlandı. Kaynak kod etiketi ve indirilebilir paket aynı sürüme karşılık gelir.
+`Packaging/Info.plist` içindeki `CFBundleShortVersionString` kullanıcıya görünen sürüm, `CFBundleVersion` artan tam sayı yapı numarasıdır. İlk güncellenebilir sürüm `0.3.1` / yapı `6` idi. Güncel kararlı sürüm `0.5.0` / yapı `8` yayımlandı. Kaynak kod etiketi ve indirilebilir paket aynı sürüme karşılık gelir.
 
 ```sh
 zsh Packaging/build.sh dist/bootstrap
@@ -74,9 +74,9 @@ En güncel kararlı sürümü GitHub Releases sayfasından indirip **bir kez** k
 5. Sürümün hazır olduğu doğrulandıktan sonra yayınlayın.
 
 ```sh
-zsh Packaging/build.sh dist/v0.4.1
-python3 Packaging/release.py publish --app dist/v0.4.1/Toplanti.app --prepare-only
-python3 Packaging/release.py publish --app dist/v0.4.1/Toplanti.app --notes-file docs/release-notes.md
+zsh Packaging/build.sh dist/v0.5.1
+python3 Packaging/release.py publish --app dist/v0.5.1/Toplanti.app --prepare-only
+python3 Packaging/release.py publish --app dist/v0.5.1/Toplanti.app --notes-file docs/release-notes.md
 ```
 
 `--prepare-only` GitHub'dan salt okunur depo/besleme bilgisi alır ve yerel ZIP'i imzalar; release oluşturmaz ve beslemeyi değiştirmez. Kamuya açık anahtar ile ZIP imzası ayrıca CryptoKit kullanılarak doğrulanır.
@@ -112,9 +112,9 @@ Otomatik yayın için kaynak deponun Actions secrets alanında:
 Tag'i göndermeden önce sürüm/yapı değerleri ve kamuya açık güncelleme yapılandırması commit edilmiş olmalıdır:
 
 ```sh
-git tag v0.4.1
+git tag v0.5.1
 git push origin main
-git push origin v0.4.1
+git push origin v0.5.1
 ```
 
 İlk Actions yayını için workflow'u elle çalıştırıp `bootstrap: true` seçin. Yerelde ilk release zaten yayımlandıysa bu seçenek kullanılmaz.
