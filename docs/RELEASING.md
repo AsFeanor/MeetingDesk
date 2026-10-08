@@ -2,12 +2,17 @@
 
 ## Dağıtım biçimi
 
-Kaynak kod deposu ile güncelleme deposu ayrı olabilir. İki desteklenen seçenek vardır:
+Bu proje, kaynak kodunu ve derlenmiş uygulama sürümlerini aynı herkese açık **[AsFeanor/MeetingDesk](https://github.com/AsFeanor/MeetingDesk)** deposunda yayımlar. Kaynak kod MIT lisanslıdır. Güncelleme ZIP'i yalnız uygulamayı içerir; toplantı kayıtları, dökümler, kişisel notlar ve özel imza anahtarları dağıtıma dahil edilmez.
 
-1. **Özel kaynak + herkese açık güncelleme deposu:** kaynak kod özel kalır, derlenmiş uygulama ZIP'i ve imzalı `appcast.xml` herkese açık olur. Uygulama GitHub hesabı istemeden güncellenir.
-2. **Tamamen özel depo:** kaynak, uygulama ZIP'i ve besleme özel kalır. Uygulamaya yalnız güncelleme deposunda `Contents: read` yetkisi olan kişisel GitHub belirteci girilir. Belirteç Anahtar Zinciri'nde saklanır. Yayınlama için ayrı yazma yetkisi gerekir.
+Kararlı besleme adresi:
 
-Dağıtım biçimi kullanıcının tercihidir. Depo görünürlüğü yayın aracı tarafından doğrulanır; gizli yapılandırma ile herkese açık depo veya tersi kabul edilmez. Güncelleme deposunun varsayılan dalında ilk `README` commit'i olmalıdır. Herkese açık dağıtımda besleme ve uygulama ZIP'i aynı release'te bulunur; kaynağın güncelleme deposuna kopyalanması gerekmez.
+```text
+https://github.com/AsFeanor/MeetingDesk/releases/latest/download/appcast.xml
+```
+
+Besleme ve uygulama ZIP'i aynı release'te bulunur. İkisi draft'a yüklendikten sonra birlikte yayımlandıkları için güncelleme kaynağı tamamlanmış sürüme geçer. Güncelleme kontrolü GitHub belirteci istemez. İlk uygulama kurulumu ve sonraki güncellemeler için [kurulum rehberine](INSTALLATION.md) bakın.
+
+Yayın aracı ayrıca ayrı güncelleme deposunu veya tamamen özel dağıtımı destekler; mevcut projede bunlar kullanılmaz. Özel dağıtımda her kullanıcı kendi `Contents: read` belirtecini Anahtar Zinciri'nde saklar ve besleme Contents API'sinden okunur. Depo görünürlüğü her yayın öncesi doğrulanır.
 
 ## Bir defalık yapılandırma
 
@@ -29,8 +34,8 @@ Sparkle imza anahtarını bir kez oluşturun. Bu işlem özel anahtarı Anahtar 
 
 ```json
 {
-  "updateRepository": "OWNER/MeetingDesk-Updates",
-  "feedURL": "https://github.com/OWNER/MeetingDesk-Updates/releases/latest/download/appcast.xml",
+  "updateRepository": "AsFeanor/MeetingDesk",
+  "feedURL": "https://github.com/AsFeanor/MeetingDesk/releases/latest/download/appcast.xml",
   "publicEDKey": "SPARKLE_GENERATE_KEYS_PUBLIC_KEY",
   "privateUpdates": false,
   "signingAccount": "AsFeanor/MeetingDesk"

@@ -2,6 +2,10 @@
 
 Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantılı toplantı notları oluşturan kişisel macOS uygulaması. Kaynak proje adı `MeetingDesk`, uygulamanın görünen adı **Toplantı**.
 
+## Kurulum
+
+[Yayımlanmış GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases) indirip uygulamayı bir kez Uygulamalar klasörüne taşıyın. Sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. Paket henüz görünmüyorsa kaynak koddan derleyebilirsiniz. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+
 ## Neler yapıyor?
 
 - Seçilen mikrofon ve Mac'te çalan sistem sesi birlikte kaydedilir. Mikrofon güçlendirmesi seçilebilir; birleşik, yalnız mikrofon ve yalnız sistem kayıtları saklanır.
@@ -22,7 +26,7 @@ Kaynak kodu derlemek için **Xcode 26.4+** ve macOS 26.4+ SDK gerekir. İlk derl
 
 Toplantı arşivi `~/Library/Application Support/MeetingDesk` içindedir. GitHub kaynak deposu ve güncelleme paketleri toplantı arşivini içermez. Güncellemeler uygulama paketini değiştirir; toplantı verisinin yeri aynıdır. Arşivin ayrıca yedeklenmesi yararlıdır.
 
-Güncelleme denetimi yalnız sürüm beslemesini ve uygulama paketini indirir. Tamamen özel dağıtım seçilmişse GitHub erişim belirteci kişisel Anahtar Zinciri'nde tutulur. Kaynak depoya belirteç veya özel imza anahtarı eklenmez.
+Kaynak kod ve sürüm paketleri aynı herkese açık [AsFeanor/MeetingDesk deposunda](https://github.com/AsFeanor/MeetingDesk) yayımlanır. Güncelleme denetimi yalnız sürüm beslemesini ve uygulama paketini indirir; GitHub hesabı veya belirteç gerektirmez. Kaynak depoya belirteç veya özel imza anahtarı eklenmez. Toplantı sesleri, transkriptleri ve kişisel notlar depoya veya release paketine dahil edilmez.
 
 ## Geliştirme
 
@@ -40,7 +44,7 @@ Geliştirme sırasında bu depoda değişiklik yapıp test edin; kalıcı uygula
 
 ## Güncellemeler ve sürüm yayımlama
 
-İlk proje kurulumu: güncelleme kodu ve dağıtım araçları hazırdır. `release-config.json` içindeki boş değerler, imzalama anahtarı ve dağıtım görünürlüğü seçilene kadar güncellemeyi kapalı tutar. Henüz GitHub sürümü yayımlanmadı; gerçek eski sürümden yeni sürüme kurulum ayrıca doğrulanmalıdır. CI imzalama sırrı tanımlı değildir; yerel Anahtar Zinciri ile yayın yapılabilir.
+Sürümler bu kaynak deposunun [GitHub Releases sayfasında](https://github.com/AsFeanor/MeetingDesk/releases) yayımlanır. Kamuya açık güncelleme adresi `https://github.com/AsFeanor/MeetingDesk/releases/latest/download/appcast.xml` olur. İmzalama özel anahtarı yerel Anahtar Zinciri'nde tutulur; yalnız kamuya açık anahtar ve besleme adresi uygulamaya eklenir. Yerel yayın için CI secret gerekmez. GitHub Actions ile otomatik imzalı yayın ayrıca ilgili secret yapılandırmasını gerektirir.
 
 Sparkle güncelleme altyapısına sahip sürüm **bir kez kurulmalıdır**. Önceki sürümler bu altyapıyı içermediğinden kendilerini güncelleyemez. Sonraki sürümler uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle kurulur. Kayıt ve not işleme sırasında güncelleme kurulumu ertelenir.
 
@@ -51,3 +55,7 @@ Güncelleme ZIP'i yalnız `Toplanti.app` içerir. Kaynak kod, kayıtlar ve dış
 ## Teknik yapı
 
 SwiftPM, SwiftUI/AppKit, ScreenCaptureKit, AVFoundation, Speech, FoundationModels ve Sparkle. `Sources/MeetingDesk` uygulamayı, `Tests/MeetingDeskTests` testleri, `Packaging` dağıtım araçlarını içerir. Güncelleme altyapısı için [Sparkle belgeleri](https://sparkle-project.org/documentation/) ve [yayın rehberi](https://sparkle-project.org/documentation/publishing/) esas alınır.
+
+## Lisans
+
+Kaynak kod [MIT lisansı](LICENSE) ile sunulur. Sparkle ve içindeki üçüncü taraf bileşenlerin lisansları [üçüncü taraf bildirimlerinde](THIRD_PARTY_NOTICES.md) yer alır. Bildirimler derlenmiş uygulama paketine de dahil edilir.

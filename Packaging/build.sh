@@ -23,6 +23,8 @@ APP="$STAGING_DIR/Toplanti.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp .build/release/MeetingDesk "$APP/Contents/MacOS/MeetingDesk"
 cp Packaging/Info.plist "$APP/Contents/Info.plist"
+cp LICENSE "$APP/Contents/Resources/MeetingDesk-LICENSE.txt"
+cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/ThirdPartyNotices.txt"
 # ditto preserves the framework's version links and executable permissions.
 ditto "$FRAMEWORK_SOURCE" "$APP/Contents/Frameworks/Sparkle.framework"
 python3 Packaging/release.py configure --app "$APP"

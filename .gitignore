@@ -22,3 +22,6 @@ meeting.json
 .transcript-history/
 __pycache__/
 *.pyc
+
+# Local diagnostics are kept outside the public source history.
+Source-notes.txt
