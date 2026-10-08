@@ -17,14 +17,14 @@ Güncellenebilir sürüm **0.4.0** yayımlandı. [En güncel GitHub sürümünü
 - Paylaşım önizlemesinden özet/kararlar, yalnız aksiyonlar veya tüm notlar ve döküm seçilir; metin kopyalanabilir, Markdown ve çok sayfalı seçilebilir metin içeren PDF kaydedilebilir. Kişisel notlar varsayılan olarak paylaşılmaz.
 - İsteğe bağlı otomatik hazırlama kaydı bitirince transkripti, ardından özeti **yalnız ücretsiz yerel modda** oluşturur. Özet/model hatası veya iptal, kaydedilmiş dökümü silmez.
 - Arşivde başlık, döküm, kararlar, aksiyonlar, sorumlu/tarih, kişi adları ve kişisel notlar birlikte aranabilir.
-- Genel, ekip, ürün ve müşteri şablonları özetin odağını değiştirir; söylenmemiş sorumlu, tarih veya karar eklemez.
+- Genel, ekip, ürün ve müşteri şablonları hem özetin odağını hem bölüm düzenini değiştirir. Ekip şablonunda ilerleme/engeller, ürün şablonunda ihtiyaçlar/geri bildirim/seçenekler, müşteri şablonunda ihtiyaçlar/endişeler öne çıkar. Şablon değiştirdikten sonra **Özeti yenile** kullanılır; söylenmemiş sorumlu, tarih veya karar eklenmez.
 - Sparkle ile uygulama içinden imzalı güncelleme denetlenir, indirilir ve kullanıcı onayıyla kurulur.
 
 [İş akışı rehberi](docs/WORKFLOW.md).
 
 ### 0.5.0 sürüm hazırlığı
 
-Notion’a doğrudan aktarım ve isteğe bağlı toplantı hatırlatıcısı eklendi. Paylaşım ekranında seçilen içerik yerel Notion başlıkları/görev kutuları ve katlanabilir transkript olarak yeni bir alt sayfaya gönderilir. Bağlantı anahtarı bir kez Anahtar Zinciri’ne kaydedilir; ses gönderilmez.
+Notion’a doğrudan aktarım, isteğe bağlı toplantı hatırlatıcısı ve şablona göre bölüm düzeni eklendi. Şablon değişince yeni özet kullanılır; önceki elle yazılmış özet düzeltmesi ayrı bir konu notu olarak korunur. Uygulama, Markdown, PDF ve Notion aynı bölüm düzenini kullanır. Paylaşım ekranında seçilen içerik yerel Notion başlıkları/görev kutuları ve katlanabilir transkript olarak yeni bir alt sayfaya gönderilir. Bağlantı anahtarı bir kez Anahtar Zinciri’ne kaydedilir; ses gönderilmez.
 
 Toplantı hatırlatıcısı desteklenen uygulamanın mikrofon sinyaline bakar, kayıt başlatmaz. Kayıt kartından süre, iki ses göstergesi, duraklat/devam et ve bitir/sakla kullanılabilir. Algılama başlangıçta kapalıdır; mikrofon kapalı görüşmeler ve bazı tarayıcılar algılanmayabilir. Bu kodun ayrıntıları ve sınırları [iş akışı rehberinde](docs/WORKFLOW.md) açıklanır. Kararlı sürüm için yukarıdaki GitHub Releases bağlantısını kullanın.
 

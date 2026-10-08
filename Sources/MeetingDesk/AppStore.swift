@@ -83,6 +83,14 @@ final class AppStore: ObservableObject {
     func setSpeechLanguage(_ language: String, for id: UUID) {
         update(id) { $0.speechLanguage = language }
     }
+    func setTemplate(_ template: MeetingTemplate, for id: UUID) {
+        guard !workInProgress, let meeting = meetings.first(where: { $0.id == id }), meeting.template != template else { return }
+        update(id) { $0.templateRawValue = template.rawValue; $0.notesNeedRefresh = $0.notes != nil }
+    }
+    func setOutputLanguage(_ language: String, for id: UUID) {
+        guard !workInProgress, let meeting = meetings.first(where: { $0.id == id }), meeting.outputLanguage != language else { return }
+        update(id) { $0.outputLanguage = language; $0.notesNeedRefresh = $0.notes != nil }
+    }
     var selectedRecoveryURL: URL? {
         guard let selected else { return nil }
         let folder = library.directory(for: selected.id)
@@ -304,10 +312,11 @@ final class AppStore: ObservableObject {
                 $0.transcribedLanguage = previous.transcribedLanguage
                 $0.notes = previous.notes
                 $0.notesEngine = previous.notesEngine
-                $0.notesNeedRefresh = previous.notesNeedRefresh
+                $0.notesTemplateRawValue = previous.notesTemplateRawValue
+                $0.notesNeedRefresh = previous.notesNeedRefresh || previous.notesTemplate != meeting.template || previous.outputLanguage != meeting.outputLanguage
                 $0.completedActions = previous.completedActions
                 $0.notesManualEdits = previous.notesManualEdits
-                $0.reviewedAt = previous.reviewedAt
+                $0.reviewedAt = $0.notesNeedRefresh ? nil : previous.reviewedAt
                 $0.transcriptSourceSeparated = previous.transcriptSourceSeparated
             }) else { throw MeetingError.message("Önceki döküm kaydedilemedi; mevcut döküm korundu.") }
             statusMessage = "Önceki döküm geri getirildi. Ses kaydı ve kişisel notlar korundu."
@@ -347,11 +356,29 @@ final class AppStore: ObservableObject {
             notes = try await service.summarize(meeting: meeting)
         }
         try Task.checkCancellation()
-        guard let current = meetings.first(where: { $0.id == id }) else { return }
-        if current.notes != nil { try library.saveNotesVersion(current) }
-        let reconciled = NotesRevisionPolicy.reconcileGenerated(notes, into: current, engine: mode.rawValue)
-        guard update(id, { $0 = reconciled }) else { throw MeetingError.message("Toplantı notları kaydedilemedi. Önceki notlar korunuyor.") }
+        try commitGeneratedNotes(notes, sourceMeeting: meeting, engine: mode.rawValue)
         statusMessage = "Toplantı notu hazır. Düzeltmeler ve tamamlanan görevler korundu; kaynakları kontrol edebilirsin."
+    }
+
+    /// Commit only against the input that was actually summarized. UI disabling
+    /// alone cannot protect an asynchronous result from source/config changes.
+    func commitGeneratedNotes(_ notes: MeetingNotes, sourceMeeting: Meeting, engine: String) throws {
+        guard let current = meetings.first(where: { $0.id == sourceMeeting.id }) else {
+            throw MeetingError.message("Özetin toplantısı bulunamadı; önceki notlar korundu.")
+        }
+        guard current.template == sourceMeeting.template,
+              current.outputLanguage == sourceMeeting.outputLanguage,
+              current.segments == sourceMeeting.segments,
+              current.speakerNames == sourceMeeting.speakerNames,
+              current.title == sourceMeeting.title else {
+            throw MeetingError.message("Özet hazırlanırken transkript, başlık, özet dili veya şablon değişti. Eski ayarlara göre hazırlanan özet kaydedilmedi; yeniden oluşturabilirsin.")
+        }
+        if current.notes != nil { try library.saveNotesVersion(current) }
+        var reconciled = NotesRevisionPolicy.reconcileGenerated(notes, into: current, engine: engine)
+        reconciled.notesTemplateRawValue = sourceMeeting.template.rawValue
+        guard update(current.id, { $0 = reconciled }) else {
+            throw MeetingError.message("Toplantı notları kaydedilemedi. Önceki notlar korunuyor.")
+        }
     }
 
     func saveEditedNotes(_ notes: MeetingNotes, meetingID: UUID) throws {
@@ -381,7 +408,7 @@ final class AppStore: ObservableObject {
                 $0.notes = previous.notes; $0.completedActions = previous.completedActions
                 $0.notesNeedRefresh = previous.notesNeedRefresh || !previous.matchesTranscript(of: meeting); $0.notesEngine = previous.notesEngine
                 $0.notesManualEdits = previous.notesManualEdits; $0.reviewedAt = previous.matchesTranscript(of: meeting) ? previous.reviewedAt : nil
-                $0.templateRawValue = previous.templateRawValue; $0.outputLanguage = previous.outputLanguage ?? $0.outputLanguage
+                $0.templateRawValue = previous.templateRawValue; $0.notesTemplateRawValue = previous.notesTemplateRawValue; $0.outputLanguage = previous.outputLanguage ?? $0.outputLanguage
             }) else { throw MeetingError.message("Önceki not sürümü kaydedilemedi; mevcut notlar korundu.") }
             statusMessage = "Önceki toplantı notu geri getirildi. Transkript ve ses kaydı korundu."
         } catch { errorMessage = error.localizedDescription }

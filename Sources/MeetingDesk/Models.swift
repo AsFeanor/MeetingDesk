@@ -21,28 +21,16 @@ enum MeetingTemplate: String, CaseIterable, Identifiable, Codable {
 
     var description: String {
         switch self {
-        case .general: return "Kararlar, aksiyonlar ve açık konular."
-        case .team: return "İlerleme, engeller ve ekipçe kabul edilen sonraki adımlar."
-        case .product: return "İhtiyaçlar, geri bildirimler, seçenekler ve kabul edilen ürün kararları."
-        case .customer: return "Müşterinin ihtiyaçları, soruları ve açıkça verilen sözler."
+        case .general: return "Dengeli özet, kararlar, aksiyonlar ve açık konular."
+        case .team: return "Durum ve ilerleme → engeller ve bağımlılıklar → sonraki adımlar."
+        case .product: return "İhtiyaçlar → ürün geri bildirimleri → seçenekler ve ürün kararları."
+        case .customer: return "Müşteri ihtiyaçları → endişeler → sorular ve açıkça verilen sözler."
         }
     }
 
-    /// Templates change emphasis, never the standard of evidence or certainty.
-    var promptGuidance: String {
-        let emphasis: String
-        switch self {
-        case .general:
-            emphasis = "Focus on accepted outcomes, concrete next steps, and unresolved issues."
-        case .team:
-            emphasis = "Emphasize stated progress, blockers, dependencies, and agreed team follow-up. A status update alone is not an action or decision."
-        case .product:
-            emphasis = "Emphasize stated user needs, product feedback, alternatives, trade-offs, and explicitly accepted product decisions. Do not invent priorities, acceptance criteria, estimates, or a roadmap."
-        case .customer:
-            emphasis = "Emphasize the customer's stated needs, concerns, questions, and explicit commitments. Separate requests and suggestions from promises; do not invent commercial terms or commitments."
-        }
-        return "Meeting template: \(rawValue). \(emphasis) Include only topics present in the sources; an empty category is valid. Never infer owners, dates, agreement, or identities from this template."
-    }
+    /// Templates shape the generated context and the output layout, preserving the same evidence rules.
+    var promptGuidance: String { generationGuidance }
+
 }
 
 struct TranscriptSegment: Codable, Identifiable, Equatable {
@@ -72,6 +60,7 @@ struct TopicNote: Codable, Identifiable, Equatable {
     var title: String
     var text: String
     var evidence: [String]
+    var sectionID: String? = nil
 }
 
 struct MeetingNotes: Codable, Equatable {
@@ -106,6 +95,7 @@ struct Meeting: Codable, Identifiable, Equatable {
     var microphoneGain: Double?
     // Optional additions let older archives continue to decode with synthesized Codable.
     var templateRawValue: String?
+    var notesTemplateRawValue: String?
     var notesManualEdits: NotesManualEdits?
     var reviewedAt: Date?
     var transcriptSourceSeparated: Bool?
@@ -113,6 +103,7 @@ struct Meeting: Codable, Identifiable, Equatable {
     func speakerName(_ id: String) -> String { speakerNames[id] ?? id }
     var speakers: [String] { Array(Set(segments.map(\.speaker))).sorted() }
     var template: MeetingTemplate { MeetingTemplate(rawValue: templateRawValue ?? "") ?? .general }
+    var notesTemplate: MeetingTemplate { MeetingTemplate(rawValue: notesTemplateRawValue ?? "") ?? .general }
     var notesAreReviewed: Bool { notes != nil && !notesNeedRefresh && reviewedAt != nil }
 }
 

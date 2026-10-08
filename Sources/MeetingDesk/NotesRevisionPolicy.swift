@@ -25,6 +25,8 @@ struct TopicNoteEdit: Codable, Equatable {
 /// cannot erase a user's wording or move a correction to an unrelated item.
 struct NotesManualEdits: Codable, Equatable {
     var summary: String?
+    // Missing provenance belongs to the legacy general-template summary.
+    var summaryTemplateRawValue: String?
     var decisions: [EvidenceNoteEdit] = []
     var actions: [ActionNoteEdit] = []
     var questions: [EvidenceNoteEdit] = []
@@ -55,11 +57,25 @@ enum NotesRevisionPolicy {
             edited.actions[index].due = optionalText(edited.actions[index].due)
         }
         for index in edited.topics.indices {
-            edited.topics[index].evidence = existing.topics.first { $0.id == edited.topics[index].id }?.evidence ?? []
+            let original = existing.topics.first { $0.id == edited.topics[index].id }
+            edited.topics[index].evidence = original?.evidence ?? []
+            edited.topics[index].sectionID = original?.sectionID
         }
         guard edited != existing else { return result }
         var edits = meeting.notesManualEdits ?? NotesManualEdits()
-        if edited.summary != existing.summary { edits.summary = edited.summary }
+        if edited.summary != existing.summary {
+            // An older correction may already be visible as a separate topic.
+            // Keep it when the user replaces the active template's summary.
+            if let previousSummary = edits.summary,
+               template(edits.summaryTemplateRawValue) != template(meeting.notesTemplateRawValue),
+               let preserved = existing.topics.first(where: {
+                   $0.text == previousSummary && $0.evidence.isEmpty && $0.sectionID == nil
+               }), !edits.topics.contains(where: { $0.value?.id == preserved.id }) {
+                edits.topics.append(TopicNoteEdit(original: nil, value: preserved, fields: [.title, .text]))
+            }
+            edits.summary = edited.summary
+            edits.summaryTemplateRawValue = template(meeting.notesTemplateRawValue).rawValue
+        }
         edits.decisions = recordEvidenceEdits(previous: existing.decisions, edited: edited.decisions, tracked: edits.decisions)
         edits.questions = recordEvidenceEdits(previous: existing.questions, edited: edited.questions, tracked: edits.questions)
         edits.ideas = recordEvidenceEdits(previous: existing.ideas, edited: edited.ideas, tracked: edits.ideas)
@@ -77,13 +93,25 @@ enum NotesRevisionPolicy {
         var result = meeting
         var notes = generated
         var edits = meeting.notesManualEdits ?? NotesManualEdits()
-        if let summary = edits.summary { notes.summary = summary }
+        let generatedTemplate = meeting.template
+        let changedTemplate = template(meeting.notesTemplateRawValue) != generatedTemplate
         var usedIDs = Set(allIDs(notes))
+        if let summary = edits.summary {
+            if template(edits.summaryTemplateRawValue) == generatedTemplate {
+                notes.summary = summary
+            } else {
+                // A correction for another template must not replace this
+                // template's fresh summary or disappear from the document.
+                notes.topics.append(TopicNote(id: availableID("manual-summary-preserved", usedIDs: &usedIDs),
+                    title: meeting.outputLanguage == "English" ? "Preserved summary correction" : "Korunan özet düzeltmesi",
+                    text: summary, evidence: [], sectionID: nil))
+            }
+        }
         mergeEvidence(&notes.decisions, edits: &edits.decisions, usedIDs: &usedIDs)
         mergeEvidence(&notes.questions, edits: &edits.questions, usedIDs: &usedIDs)
         mergeEvidence(&notes.ideas, edits: &edits.ideas, usedIDs: &usedIDs)
         let actionMappings = mergeActions(&notes.actions, edits: &edits.actions, usedIDs: &usedIDs)
-        mergeTopics(&notes.topics, edits: &edits.topics, usedIDs: &usedIDs)
+        mergeTopics(&notes.topics, edits: &edits.topics, usedIDs: &usedIDs, changedTemplate: changedTemplate)
         var completed = Set<String>()
         var matched = Set<Int>()
         for old in meeting.notes?.actions ?? [] where meeting.completedActions.contains(old.id) {
@@ -110,6 +138,7 @@ enum NotesRevisionPolicy {
         let sourceIDs = Set(meeting.segments.map(\.id))
         result.notesNeedRefresh = allEvidence(notes).contains { !sourceIDs.contains($0) }
         result.notesEngine = engine ?? meeting.notesEngine
+        result.notesTemplateRawValue = generatedTemplate.rawValue
         result.reviewedAt = nil
         return result
     }
@@ -130,6 +159,10 @@ enum NotesRevisionPolicy {
     private static func optionalText(_ value: String?) -> String? {
         let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return text.isEmpty ? nil : text
+    }
+
+    private static func template(_ value: String?) -> MeetingTemplate {
+        MeetingTemplate(rawValue: value ?? "") ?? .general
     }
 
     private static func preserveEvidence(_ values: [EvidenceItem], originals: [EvidenceItem]) -> [EvidenceItem] {
@@ -257,7 +290,8 @@ enum NotesRevisionPolicy {
         return mappings
     }
 
-    private static func mergeTopics(_ items: inout [TopicNote], edits: inout [TopicNoteEdit], usedIDs: inout Set<String>) {
+    private static func mergeTopics(_ items: inout [TopicNote], edits: inout [TopicNoteEdit], usedIDs: inout Set<String>,
+                                    changedTemplate: Bool) {
         var matched = Set<String>()
         for index in edits.indices {
             let edit = edits[index]
@@ -275,6 +309,7 @@ enum NotesRevisionPolicy {
                 edits[index].value = item
             } else if var value = edit.value {
                 value.id = availableID(value.id, usedIDs: &usedIDs)
+                if changedTemplate { value.sectionID = nil }
                 items.append(value)
                 matched.insert(value.id)
                 edits[index].value = value

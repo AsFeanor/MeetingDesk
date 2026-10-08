@@ -96,7 +96,7 @@ struct OpenAIService {
         let body: [String: Any] = [
             "model": "gpt-4.1-mini", "temperature": 0.2, "max_completion_tokens": 8_000, "store": false,
             "messages": [["role": "system", "content": instructions], ["role": "user", "content": String(decoding: inputData, as: UTF8.self)]],
-            "response_format": ["type": "json_schema", "json_schema": ["name": "meeting_notes", "strict": true, "schema": Self.notesSchema]]
+            "response_format": ["type": "json_schema", "json_schema": ["name": "meeting_notes", "strict": true, "schema": Self.notesSchema(template: meeting.template)]]
         ]
         var request = try authorizedRequest(path: "chat/completions", timeout: 300)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -187,6 +187,7 @@ struct OpenAIService {
                 throw MeetingError.message("Özette başlıksız bir konu var. Notlar kaydedilmedi.")
             }
         }
+        try LocalSummaryService.validateTemplateSections(notes: notes, template: meeting.template, requireSections: true)
         for action in notes.actions {
             try check(id: action.id, text: action.text, evidence: action.evidence)
             let sources = action.evidence.compactMap { segments[$0] }
@@ -208,7 +209,7 @@ struct OpenAIService {
         }
     }
 
-    private static var notesSchema: [String: Any] {
+    static func notesSchema(template: MeetingTemplate) -> [String: Any] {
         let string: [String: Any] = ["type": "string"]
         let evidence: [String: Any] = ["type": "array", "items": string]
         func object(_ properties: [String: Any]) -> [String: Any] {
@@ -217,7 +218,12 @@ struct OpenAIService {
         let item = object(["id": string, "text": string, "evidence": evidence])
         let action = object(["id": string, "text": string, "owner": ["type": ["string", "null"]],
                              "due": ["type": ["string", "null"]], "evidence": evidence])
-        let topic = object(["id": string, "title": string, "text": string, "evidence": evidence])
+        // The layout is part of the structured response, not just prompt emphasis.
+        // Nullable keeps the general layout compatible; nongeneral generation
+        // validates that every returned context topic has a section assignment.
+        let section: [String: Any] = ["type": ["string", "null"],
+                                      "enum": template.contextSections.map { $0.id as Any } + [NSNull()]]
+        let topic = object(["id": string, "title": string, "text": string, "evidence": evidence, "sectionID": section])
         return object(["summary": string,
                        "decisions": ["type": "array", "items": item],
                        "actions": ["type": "array", "items": action],

@@ -1,7 +1,10 @@
 ## Toplantı 0.5.0
 
-Notion paylaşımı ve toplantı sırasında küçük kayıt kartı eklendi.
+Toplantı şablonlarının aynı düzeni üretmesi düzeltildi; Notion paylaşımı ve toplantı sırasında küçük kayıt kartı eklendi.
 
+- Genel, ekip, ürün ve müşteri şablonları farklı özet odağı, bölüm başlıkları ve sıralama kullanır. Ekipte ilerleme/engeller; üründe ihtiyaçlar/geri bildirim/seçenekler; müşteride ihtiyaçlar/endişeler ayrı gösterilir. Kaynakta bilgi olmayan bölümler açıkça belirtilir.
+- Şablon değişince **Özeti yenile** ile yeni düzen oluşturulur. Önceki elle düzeltilmiş özet yeni özeti örtmez; ayrı bir konu notu olarak korunur. Not geçmişi ve eski toplantı dosyaları desteklenir.
+- Ekran, düzenleyici, Markdown, PDF ve Notion çıktısı aynı şablon düzenini kullanır.
 - Paylaş ekranından seçili özeti, kararları, görevleri veya tam transkripti Notion’da yeni alt sayfa olarak oluşturma. Başlıklar ve görev kutuları Notion bloklarıdır; transkript katlanabilir bölümde durur. Kişisel notlar yalnız ayrıca seçilirse eklenir; ses kaydı gönderilmez.
 - Bir defalık Notion iç entegrasyon anahtarı ve hedef sayfa bağlantısı kurulumu. Anahtar yalnız Mac’in Anahtar Zinciri’nde saklanır.
 - Uzun metin için karakter/blok/boyut sınırlarına uygun aktarım; sınırlı isteklerde kontrollü bekleme. Eksik veya sonucu belirsiz aktarımda sayfayı kontrol etmeden otomatik ikinci kopya oluşturulmaz.

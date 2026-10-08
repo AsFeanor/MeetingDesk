@@ -1,4 +1,4 @@
-# Toplantı iş akışı · 0.4.0
+# Toplantı iş akışı · 0.5.0
 
 ## Kayıttan önce
 
@@ -13,6 +13,12 @@ Ayrı sesleri olan kayıtlarda mikrofon ve toplantı sesi ayrı çözülür. “
 **Notları düzenle** bir taslak açar. Kaydetmeden kapatırsanız not değişmez. Sorumlu veya tarih bilinmiyorsa boş bırakın. Kaynak bağlantıları korunur; elle eklediğiniz maddeler ayrıca gösterilir. Yenilemede düzeltmeler korunur; eşleşmesi belirsiz eski düzeltme veya tamamlanmış iş ayrı tutulur. Bu nedenle yeni notları kaynaklarıyla kontrol edin. Kaynağı eksik eski notlar güncel olarak onaylanamaz.
 
 **Kontrol edildi olarak işaretle** değerlendirme durumudur. Döküm, not veya şablon değişince işaret kalkar. Menüdeki **Önceki nota dön** yalnız notları, düzenleme bilgilerini ve görevlerin durumunu geri getirir; ses ve dökümü değiştirmez. Döküm kaynağı farklıysa eski not güncel olarak gösterilmez.
+
+## Toplantı şablonları
+
+**Genel toplantı** özet, karar, aksiyon ve açık soruları dengeli gösterir. **Ekip toplantısı** durum/ilerleme, engeller/bağımlılıklar ve sonraki adımları; **Ürün değerlendirmesi** ihtiyaçlar/problemler, geri bildirimler ve seçenekleri; **Müşteri görüşmesi** müşteri ihtiyaçları, endişeler/beklentiler ve takip konularını öne çıkarır. Kaynakta bilgi yoksa bölüm doldurulmaz.
+
+Şablon değiştirip **Özeti yenile** kullanın. Başarılı yenilemeye kadar mevcut not eski şablonuyla gösterilir ve bu durum açıklanır. Eski dosyalarda üretim şablonu bilinmediğinden genel düzen kullanılır. Başka şablona ait elle düzeltilmiş özet, yeni model özetinin yerine geçmez; **Korunan özet düzeltmesi** adıyla ayrı bir konu notu olarak saklanır. Aynı şablonu yenilerken düzeltmeler korunur. Not sürümünü geri getirmek üretildiği şablonu da geri getirir. Ekran, düzenleyici ve bütün paylaşım biçimleri aynı başlık/sırayı kullanır.
 
 ## Paylaşım
 
