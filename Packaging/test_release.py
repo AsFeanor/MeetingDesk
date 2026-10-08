@@ -115,6 +115,16 @@ class ReleaseValidationTests(unittest.TestCase):
             self.assertEqual(run.call_args.kwargs["input_text"], seed + "\n")
             self.assertNotIn(seed, map(str, run.call_args.args[0]))
 
+    def test_unsupported_64_byte_key_is_rejected_before_signer_runs(self):
+        secret = base64.b64encode(bytes(range(64))).decode()
+        with patch.dict(os.environ, {"SPARKLE_PRIVATE_KEY": secret}), \
+             patch.object(release, "signer", return_value=Path("sign_update")), \
+             patch.object(release, "run") as run:
+            with self.assertRaisesRegex(release.ReleaseError, "32/96-byte") as caught:
+                release.sign(["-p", "archive.zip"])
+            run.assert_not_called()
+            self.assertNotIn(secret, str(caught.exception))
+
     def pipeline(self, *, private=False, fail_upload=False, fail_sign=False):
         settings = self.settings(private)
         events = []

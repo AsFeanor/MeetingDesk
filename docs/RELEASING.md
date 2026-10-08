@@ -99,7 +99,7 @@ Besleme en son tam paketi içerir; delta güncelleme üretilmez. `--bootstrap` b
 
 Otomatik yayın için kaynak deponun Actions secrets alanında:
 
-- `SPARKLE_PRIVATE_KEY`: Sparkle `generate_keys` ile güvenli biçimde dışa aktarılmış base64 anahtar (yeni anahtarlar 32 byte seed; eski 64/96 byte biçimleri de desteklenir). İmza aracına stdin üzerinden aktarılır; komut satırına veya dosyaya yazılmaz.
+- `SPARKLE_PRIVATE_KEY`: Sparkle `generate_keys` ile güvenli biçimde dışa aktarılmış base64 anahtar (yeni anahtarlar 32 byte seed; eski 96 byte biçimi de desteklenir). İmza aracına stdin üzerinden aktarılır; komut satırına veya dosyaya yazılmaz.
 - `RELEASE_GITHUB_TOKEN`: Güncelleme deposu ayrıysa, yalnız bu depoda `Contents: read/write` yetkili belirteç. Aynı depo için standart `GITHUB_TOKEN` yeterli olabilir. Korumalı dal kuralları ayrıca izin gerektirebilir.
 
 İmza secret'ı yoksa workflow açıkça durur; imzasız release yayınlamaz. Yerel Anahtar Zinciri ile yayın yapmak için Actions secret'larına gerek yoktur. Bu dosyalar secret oluşturmaz veya belirteç paylaşmaz. Özel kaynak depo üzerinde Actions çalışması hesabın GitHub Actions kotasını kullanır; uygulamanın yerel transkript/özet maliyetinden ayrıdır.

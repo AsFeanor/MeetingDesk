@@ -40,6 +40,8 @@ Geliştirme sırasında bu depoda değişiklik yapıp test edin; kalıcı uygula
 
 ## Güncellemeler ve sürüm yayımlama
 
+İlk proje kurulumu: güncelleme kodu ve dağıtım araçları hazırdır. `release-config.json` içindeki boş değerler, imzalama anahtarı ve dağıtım görünürlüğü seçilene kadar güncellemeyi kapalı tutar. Henüz GitHub sürümü yayımlanmadı; gerçek eski sürümden yeni sürüme kurulum ayrıca doğrulanmalıdır. CI imzalama sırrı tanımlı değildir; yerel Anahtar Zinciri ile yayın yapılabilir.
+
 Sparkle güncelleme altyapısına sahip sürüm **bir kez kurulmalıdır**. Önceki sürümler bu altyapıyı içermediğinden kendilerini güncelleyemez. Sonraki sürümler uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle kurulur. Kayıt ve not işleme sırasında güncelleme kurulumu ertelenir.
 
 Güncelleme ZIP'i yalnız `Toplanti.app` içerir. Kaynak kod, kayıtlar ve dışa aktarılan notlar ZIP'e eklenmez. Ed25519 imzası güncellemenin yayıncıdan geldiğini doğrular. Mevcut ad hoc Apple kod imzası notarizasyon değildir; geniş dağıtım için Developer ID ve notarizasyon ayrıca yapılandırılabilir.

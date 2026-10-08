@@ -113,8 +113,8 @@ def sign(arguments):
             raw = base64.b64decode(secret.strip(), validate=True)
         except ValueError:
             raise ReleaseError("SPARKLE_PRIVATE_KEY is not valid base64")
-        if len(raw) not in (32, 64, 96):
-            raise ReleaseError("SPARKLE_PRIVATE_KEY must be a Sparkle 32/64/96-byte export")
+        if len(raw) not in (32, 96):
+            raise ReleaseError("SPARKLE_PRIVATE_KEY must be a Sparkle 32/96-byte export")
         command += ["--ed-key-file", "-"]
         input_text = secret.strip() + "\n"
     else:
