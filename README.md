@@ -18,6 +18,7 @@ Güncellenebilir sürüm **0.5.0** yayımlandı. [En güncel GitHub sürümünü
 - İsteğe bağlı otomatik hazırlama kaydı bitirince transkripti, ardından özeti **yalnız ücretsiz yerel modda** oluşturur. Özet/model hatası veya iptal, kaydedilmiş dökümü silmez.
 - Arşivde başlık, döküm, kararlar, aksiyonlar, sorumlu/tarih, kişi adları ve kişisel notlar birlikte aranabilir.
 - Genel, ekip, ürün ve müşteri şablonları hem özetin odağını hem bölüm düzenini değiştirir. Ekip şablonunda ilerleme/engeller, ürün şablonunda ihtiyaçlar/geri bildirim/seçenekler, müşteri şablonunda ihtiyaçlar/endişeler öne çıkar. Şablon değiştirdikten sonra **Özeti yenile** kullanılır; söylenmemiş sorumlu, tarih veya karar eklenmez.
+- Ses kayıtları için isteğe bağlı 7/30/90/180/365 gün veya özel saklama süresi. Süresi dolan sesler Çöp Sepeti’ne taşınır; transkript, özet ve kişisel notlar korunur. Varsayılan kapalıdır.
 - Sparkle ile uygulama içinden imzalı güncelleme denetlenir, indirilir ve kullanıcı onayıyla kurulur.
 
 [İş akışı rehberi](docs/WORKFLOW.md).
