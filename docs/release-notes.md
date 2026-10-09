@@ -1,6 +1,6 @@
 ## Toplantı 0.5.3
 
-Yerel özet oluştururken kaynak bağlantılarının yanlış yazılması engellendi.
+Yerel özetin başka konuşma bölümüne ait bir kaynak bağlantısı nedeniyle durması düzeltildi.
 
 - Model, her bölümde kaynak bağlantılarını yalnız o bölümün konuşmalarından seçer. Uzun kayıt kimliklerini yeniden yazmak yerine kısa, doğrulanan kaynak etiketleri kullanılır; kaydedilen notlar asıl transkript bağlantılarını korur.
 - Uzun toplantılar hazırlanırken her bölümün kaynakları ve çıktı biçimi birlikte hesaba katılır. Transkript metni atlanmaz.
