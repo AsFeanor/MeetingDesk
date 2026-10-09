@@ -4,7 +4,7 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-Güncellenebilir sürüm **0.5.2** yayımlandı. [En güncel GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) indirip uygulamayı bir kez Uygulamalar klasörüne taşıyın. Sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+Güncellenebilir sürüm **0.5.3** yayımlandı. [En güncel GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) indirip uygulamayı bir kez Uygulamalar klasörüne taşıyın. Sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
 
 ## Neler yapıyor?
 
@@ -22,6 +22,10 @@ Güncellenebilir sürüm **0.5.2** yayımlandı. [En güncel GitHub sürümünü
 - Sparkle ile uygulama içinden imzalı güncelleme denetlenir, indirilir ve kullanıcı onayıyla kurulur.
 
 [İş akışı rehberi](docs/WORKFLOW.md).
+
+### 0.5.3 ile gelenler
+
+Yerel özetin başka konuşma bölümüne ait bir kaynak bağlantısı nedeniyle durması düzeltildi. Model her bölümde yalnız o bölümün kaynaklarından seçim yapar; kısa kaynak etiketleri kaydetmeden önce asıl transkript kimliklerine doğrulanarak çevrilir. Uzun toplantılarda her bölümün kaynakları ve çıktı biçimi birlikte hesaba katılır. Güncellemeden sonra mevcut toplantıda **Özeti yenile** kullanın.
 
 ### 0.5.2 ile gelenler
 
