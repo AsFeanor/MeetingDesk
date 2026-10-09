@@ -15,16 +15,17 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
             let union = try resolve(try XCTUnwrap(itemArray["items"] as? [String: Any]), in: schema)
             let branches = try XCTUnwrap(union["anyOf"] as? [[String: Any]]).map { try resolve($0, in: schema) }
             XCTAssertEqual(branches.count, 2, "Context and factual note categories require separate structural constraints")
+            let staticSchemaDescription = try schemaJSON(schema)
             let context = try XCTUnwrap(branches.first { branch in
                 let properties = branch["properties"] as? [String: Any]
                 let category = properties?["category"] as? [String: Any]
                 return category?["enum"] as? [String] == ["topic"]
-            })
+            }, "Missing exact topic category branch in static generated schema: \(staticSchemaDescription)")
             let item = try XCTUnwrap(branches.first { branch in
                 let properties = branch["properties"] as? [String: Any]
                 let category = properties?["category"] as? [String: Any]
                 return Set(category?["enum"] as? [String] ?? []) == Set(["decision", "action", "question", "idea"])
-            })
+            }, "Missing exact factual category branch in static generated schema: \(staticSchemaDescription)")
             let contextProperties = try XCTUnwrap(context["properties"] as? [String: Any])
             let section = try resolve(try XCTUnwrap(contextProperties["sectionID"] as? [String: Any]), in: schema)
             let choices = try XCTUnwrap(section["enum"] as? [String], "\(template.rawValue) must constrain section IDs")
@@ -228,18 +229,45 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
         try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(LocalSummaryService.generationSchema(template: template))) as? [String: Any])
     }
 
-    private func resolve(_ value: [String: Any], in root: [String: Any]) throws -> [String: Any] {
-        guard let reference = value["$ref"] as? String else { return value }
-        XCTAssertTrue(reference.hasPrefix("#/"))
-        let components = reference.dropFirst(2).split(separator: "/").map {
-            $0.replacingOccurrences(of: "~1", with: "/").replacingOccurrences(of: "~0", with: "~")
+    private func schemaJSON(_ schema: [String: Any]) throws -> String {
+        String(decoding: try JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys]), as: UTF8.self)
+    }
+
+    /// FoundationModels may inline a schema or place any nested property in
+    /// $defs. Resolve the full subtree before inspecting semantic constraints.
+    private func resolve(_ value: [String: Any], in root: [String: Any],
+                         visiting: Set<String> = []) throws -> [String: Any] {
+        var resolved = value
+        var references = visiting
+        if let reference = value["$ref"] as? String {
+            guard reference.hasPrefix("#/"), !references.contains(reference) else {
+                throw SchemaInspectionError.unsupportedReference(reference)
+            }
+            references.insert(reference)
+            let components = reference.dropFirst(2).split(separator: "/").map {
+                $0.replacingOccurrences(of: "~1", with: "/").replacingOccurrences(of: "~0", with: "~")
+            }
+            var target: Any = root
+            for component in components {
+                let dictionary = try XCTUnwrap(target as? [String: Any])
+                target = try XCTUnwrap(dictionary[component])
+            }
+            resolved = try resolve(try XCTUnwrap(target as? [String: Any]), in: root, visiting: references)
+            // Preserve constraints beside $ref as well as those on its target.
+            for (name, sibling) in value where name != "$ref" { resolved[name] = sibling }
         }
-        var resolved: Any = root
-        for component in components {
-            let dictionary = try XCTUnwrap(resolved as? [String: Any])
-            resolved = try XCTUnwrap(dictionary[component])
+        for (name, property) in resolved {
+            if let object = property as? [String: Any] {
+                resolved[name] = try resolve(object, in: root, visiting: references)
+            } else if let choices = property as? [[String: Any]] {
+                resolved[name] = try choices.map { try resolve($0, in: root, visiting: references) }
+            }
         }
-        return try resolve(try XCTUnwrap(resolved as? [String: Any]), in: root)
+        return resolved
+    }
+
+    private enum SchemaInspectionError: Error {
+        case unsupportedReference(String)
     }
 
     @available(macOS 26.0, *)
