@@ -38,18 +38,14 @@ struct LocalSummaryService {
             throw MeetingError.message("Mac’teki yerel model seçilen çıktı dilini desteklemiyor. Desteklenen bir çıktı dili seçin. Transkript korunuyor.")
         }
         let instructions = Self.instructions(language: language, template: meeting.template)
-        // Guided generation must enforce the selected layout rather than asking
-        // the model to invent section IDs and rejecting them after generation.
-        let schema = try Self.generationSchema(template: meeting.template)
         var chunks = try Self.sourceChunks(meeting: meeting)
         // Reserve enough room for the entire guided response. No source suffix is
         // dropped; an oversized chunk is recursively divided into smaller chunks.
         if #available(macOS 26.4, *) {
             do {
                 let instructionTokens = try await model.tokenCount(for: Instructions(instructions))
-                let schemaTokens = try await model.tokenCount(for: schema)
-                let fixed = instructionTokens + schemaTokens
-                chunks = try await Self.fit(chunks: chunks, model: model, fixedTokens: fixed)
+                chunks = try await Self.fit(chunks: chunks, model: model,
+                                            instructionTokens: instructionTokens, template: meeting.template)
             } catch is CancellationError { throw CancellationError() }
             catch let error as MeetingError { throw error }
             catch {
@@ -65,11 +61,15 @@ struct LocalSummaryService {
             try Task.checkCancellation()
             let session = LanguageModelSession(model: model, instructions: instructions)
             do {
-                let response = try await session.respond(to: Self.prompt(sources: sources),
+                // The model sees short, closed-set aliases for this exact chunk.
+                // Resolve them back to archived IDs before validating or saving.
+                let scope = try Self.evidenceScope(sources: sources)
+                let schema = try Self.generationSchema(template: meeting.template, evidenceIDs: scope.evidenceIDs)
+                let response = try await session.respond(to: Self.prompt(sources: scope.sources),
                                                          schema: schema,
                                                          options: GenerationOptions(temperature: 0.1, maximumResponseTokens: 1_600))
                 try Task.checkCancellation()
-                let notes = try Self.convert(response.content, part: index + 1)
+                let notes = try Self.convert(response.content, part: index + 1, evidenceScope: scope)
                 let scopedText = sources.reduce(into: [String: String]()) { result, source in
                     result[source.id, default: ""] += source.text
                 }
@@ -165,12 +165,16 @@ struct LocalSummaryService {
     }
 
     @available(macOS 26.4, *)
-    private static func fit(chunks: [[Source]], model: SystemLanguageModel, fixedTokens: Int) async throws -> [[Source]] {
+    private static func fit(chunks: [[Source]], model: SystemLanguageModel,
+                            instructionTokens: Int, template: MeetingTemplate) async throws -> [[Source]] {
         var result: [[Source]] = []
         for chunk in chunks {
             try Task.checkCancellation()
-            let tokens = try await model.tokenCount(for: Prompt(try prompt(sources: chunk)))
-            if fixedTokens + tokens + 1_600 + 128 <= model.contextSize {
+            let scope = try evidenceScope(sources: chunk)
+            let schema = try generationSchema(template: template, evidenceIDs: scope.evidenceIDs)
+            let promptTokens = try await model.tokenCount(for: Prompt(try prompt(sources: scope.sources)))
+            let schemaTokens = try await model.tokenCount(for: schema)
+            if instructionTokens + schemaTokens + promptTokens + 1_600 + 128 <= model.contextSize {
                 result.append(chunk)
             } else {
                 let halves: [[Source]]
@@ -187,7 +191,8 @@ struct LocalSummaryService {
                     second.text = String(source.text[middle...])
                     halves = [[first], [second]]
                 }
-                result += try await fit(chunks: halves, model: model, fixedTokens: fixedTokens)
+                result += try await fit(chunks: halves, model: model,
+                                        instructionTokens: instructionTokens, template: template)
             }
         }
         return result
@@ -205,13 +210,64 @@ struct LocalSummaryService {
         """
     }
 
+    /// Short aliases keep arbitrary archive IDs out of guided generation. Each
+    /// distinct source gets one alias; split fragments of the same source share it.
+    /// The mapping is local to a chunk and never becomes part of saved notes.
+    struct EvidenceScope {
+        let sources: [Source]
+        let evidenceIDs: [String]
+        let originalIDsByAlias: [String: String]
+
+        fileprivate init(sources: [Source], evidenceIDs: [String], originalIDsByAlias: [String: String]) {
+            self.sources = sources
+            self.evidenceIDs = evidenceIDs
+            self.originalIDsByAlias = originalIDsByAlias
+        }
+    }
+
+    static func evidenceScope(sources: [Source]) throws -> EvidenceScope {
+        guard !sources.isEmpty else {
+            throw MeetingError.message("Yerel özet için kaynak bölümü bulunamadı. Transkript korunuyor.")
+        }
+        var aliasesByOriginalID: [String: String] = [:]
+        var originalIDsByAlias: [String: String] = [:]
+        var evidenceIDs: [String] = []
+        var scopedSources: [Source] = []
+        for source in sources {
+            guard !source.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  source.id.utf8.count <= 256 else {
+                throw MeetingError.message("Transkript kaynak kimlikleri geçersiz. Transkripti düzeltip tekrar deneyin.")
+            }
+            let alias: String
+            if let existing = aliasesByOriginalID[source.id] {
+                alias = existing
+            } else {
+                alias = "s\(evidenceIDs.count + 1)"
+                evidenceIDs.append(alias)
+                aliasesByOriginalID[source.id] = alias
+                originalIDsByAlias[alias] = source.id
+            }
+            var scoped = source
+            scoped.id = alias
+            scopedSources.append(scoped)
+        }
+        return EvidenceScope(sources: scopedSources, evidenceIDs: evidenceIDs,
+                             originalIDsByAlias: originalIDsByAlias)
+    }
+
     /// The topic branch requires an exact selected-template section ID. Other
     /// categories retain their own shape and never acquire a context assignment.
     /// One union array preserves the existing 12-item guided-response ceiling.
     @available(macOS 26.0, *)
-    static func generationSchema(template: MeetingTemplate) throws -> GenerationSchema {
+    static func generationSchema(template: MeetingTemplate, evidenceIDs: [String]) throws -> GenerationSchema {
+        guard !evidenceIDs.isEmpty, Set(evidenceIDs).count == evidenceIDs.count,
+              evidenceIDs.allSatisfy({ $0.range(of: "^s[1-9][0-9]*\\z", options: .regularExpression) != nil }) else {
+            throw MeetingError.message("Yerel özetin kaynak kapsamı geçersiz. Transkript korunuyor.")
+        }
         let string = DynamicGenerationSchema(type: String.self)
-        let evidence = DynamicGenerationSchema(arrayOf: string, minimumElements: 1, maximumElements: 4)
+        let evidenceID = DynamicGenerationSchema(name: "LocalEvidenceID",
+            description: "Only a source alias from this exact source chunk; copy its spelling exactly.", anyOf: evidenceIDs)
+        let evidence = DynamicGenerationSchema(arrayOf: evidenceID, minimumElements: 1, maximumElements: 4)
         let contextSections = template.contextSections
         let section = DynamicGenerationSchema(
             name: "LocalContextSectionID",
@@ -244,15 +300,34 @@ struct LocalSummaryService {
 
     @available(macOS 26.0, *)
     static func convert(_ generated: GeneratedContent, part: Int) throws -> MeetingNotes {
-        try convert(LocalGeneratedNotes(generated), part: part)
+        try convert(LocalGeneratedNotes(generated), part: part, evidenceScope: nil)
     }
 
     @available(macOS 26.0, *)
-    private static func convert(_ generated: LocalGeneratedNotes, part: Int) throws -> MeetingNotes {
+    static func convert(_ generated: GeneratedContent, part: Int, evidenceScope: EvidenceScope) throws -> MeetingNotes {
+        try convert(LocalGeneratedNotes(generated), part: part, evidenceScope: evidenceScope)
+    }
+
+    @available(macOS 26.0, *)
+    private static func convert(_ generated: LocalGeneratedNotes, part: Int,
+                                evidenceScope: EvidenceScope?) throws -> MeetingNotes {
         var notes = MeetingNotes(summary: generated.summary, decisions: [], actions: [], questions: [], ideas: [], topics: [])
         for (index, item) in generated.items.enumerated() {
             let id = "local-\(part)-\(index + 1)"
-            let evidence = Array(Set(item.evidence)).sorted()
+            let evidence: [String]
+            if let scope = evidenceScope {
+                guard !item.evidence.isEmpty else {
+                    throw MeetingError.message("Yerel özetin kaynak bağlantıları doğrulanamadı. Desteksiz notlar kaydedilmedi; transkript korunuyor.")
+                }
+                evidence = try Array(Set(item.evidence.map { alias in
+                    guard let originalID = scope.originalIDsByAlias[alias] else {
+                        throw MeetingError.message("Yerel özetin kaynak bağlantıları doğrulanamadı. Desteksiz notlar kaydedilmedi; transkript korunuyor.")
+                    }
+                    return originalID
+                })).sorted()
+            } else {
+                evidence = Array(Set(item.evidence)).sorted()
+            }
             switch item.category {
             case .decision: notes.decisions.append(EvidenceItem(id: id, text: item.text, evidence: evidence))
             case .action: notes.actions.append(ActionItem(id: id, text: item.text, owner: item.owner, due: item.due, evidence: evidence))
