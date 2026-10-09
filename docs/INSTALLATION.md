@@ -31,9 +31,11 @@ Güncelleme, uygulama paketini yeniler. Toplantı arşivi aynı yerde kalır:
 ~/Library/Application Support/MeetingDesk
 ```
 
-## 0.5.0 ile ilk deneme
+## 0.5.1 ile ilk deneme
 
 Yeni toplantıda **Sesimi kontrol et** düğmesiyle 10 saniye konuşup yalnız mikrofon sesini dinleyin. İsterseniz **Kaydı bitirince transkript ve özeti Mac’te hazırla** seçeneğini açın; bu özellik yalnız ücretsiz yerel modda çalışır. Şablonla özetin odağını ve bölüm düzenini seçebilirsiniz; eski bir notun şablonunu değiştirdikten sonra **Özeti yenile** kullanın. **Notları düzenle** ile düzeltme yapabilir ve **Paylaş** önizlemesinden kişisel notları dahil etmeden PDF/metin çıktısı alabilirsiniz. Notion’a aktarım için bağlantıyı bir kez ayarlayın; toplantı hatırlatıcısını isterseniz ayarlardan açın. [İş akışı rehberi](WORKFLOW.md).
+
+Ses saklama süresini **Ayarlar → Ses kayıtlarını saklama** bölümünden seçip **Uygula** ile kaydedebilirsiniz. Otomatik silme başlangıçta kapalıdır; süre dolan sesler Çöp Sepeti’ne taşınırken transkript ve özetler kalır. İlk açılışta mevcut eski kayıtların da etkileneceği açıklanır.
 
 ## Kaynak koddan derleme
 

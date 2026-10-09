@@ -4,7 +4,7 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-Güncellenebilir sürüm **0.5.0** yayımlandı. [En güncel GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) indirip uygulamayı bir kez Uygulamalar klasörüne taşıyın. Sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+Güncellenebilir sürüm **0.5.1** yayımlandı. [En güncel GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) indirip uygulamayı bir kez Uygulamalar klasörüne taşıyın. Sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
 
 ## Neler yapıyor?
 
@@ -22,6 +22,10 @@ Güncellenebilir sürüm **0.5.0** yayımlandı. [En güncel GitHub sürümünü
 - Sparkle ile uygulama içinden imzalı güncelleme denetlenir, indirilir ve kullanıcı onayıyla kurulur.
 
 [İş akışı rehberi](docs/WORKFLOW.md).
+
+### 0.5.1 ile gelenler
+
+**Ayarlar → Ses kayıtlarını saklama** bölümünden süre seçip **Uygula** kullanın. Varsayılan otomatik silme kapalıdır. Süresi dolan sesler Mac’in Çöp Sepeti’ne taşınır; transkript, özet, kişisel notlar ve metin geçmişi korunur. Kontrol uygulama açıkken çalışır; kayıt, dinleme veya not hazırlama bitene kadar bekler. Disk alanı Çöp Sepeti boşaltılınca geri kazanılır.
 
 ### 0.5.0 ile gelenler
 
