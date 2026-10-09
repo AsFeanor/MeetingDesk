@@ -99,6 +99,9 @@ struct Meeting: Codable, Identifiable, Equatable {
     var notesManualEdits: NotesManualEdits?
     var reviewedAt: Date?
     var transcriptSourceSeparated: Bool?
+    var audioSavedAt: Date?
+    var audioDeletedAt: Date?
+    var audioDeletionPending: Bool?
 
     func speakerName(_ id: String) -> String { speakerNames[id] ?? id }
     var speakers: [String] { Array(Set(segments.map(\.speaker))).sorted() }

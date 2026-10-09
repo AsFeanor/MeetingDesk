@@ -12,6 +12,8 @@ final class AppStore: ObservableObject {
     @Published var isBusy = false
     @Published var showSettings = false
     @Published var showMicrophoneCheck = false
+    @Published private(set) var audioRetentionPolicy: AudioRetentionPolicy = .disabled
+    @Published private(set) var audioRetentionStatus: String?
     @Published var automaticLocalProcessing = UserDefaults.standard.bool(forKey: "meetingdesk.automaticLocalProcessing") {
         didSet { UserDefaults.standard.set(automaticLocalProcessing, forKey: "meetingdesk.automaticLocalProcessing") }
     }
@@ -62,6 +64,13 @@ final class AppStore: ObservableObject {
     private var timer: Timer?
     private var processingTask: Task<Void, Never>?
     private var isFinishingRecording = false
+    private let audioRetentionDefaults: UserDefaults
+    private let audioRetentionService: AudioRetentionService
+    private let playbackCompletion = AudioPlaybackCompletion()
+    private var audioRetentionTimer: Timer?
+    private var audioRetentionCleanupPending = false
+    private var lastAudioRetentionCheck: Date?
+    private static let audioRetentionPolicyKey = "meetingdesk.audioRetentionPolicy"
 
     var hasPendingRecordingSession: Bool { recordingID != nil }
     var workInProgress: Bool { isBusy || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession || notion.isExporting }
@@ -77,7 +86,10 @@ final class AppStore: ObservableObject {
         defaultMicrophoneName = AVCaptureDevice.default(for: .audio)?.localizedName ?? "Mac’in varsayılan mikrofonu"
     }
     func playbackSources(for meeting: Meeting) -> [PlaybackSource] {
-        PlaybackSource.allCases.filter { library.audioURL(for: meeting, source: $0) != nil }
+        PlaybackSource.allCases.filter { source in
+            guard let url = library.audioURL(for: meeting, source: source) else { return false }
+            return FileManager.default.fileExists(atPath: url.path)
+        }
     }
     func speechLanguage(for meeting: Meeting) -> String { meeting.speechLanguage ?? transcriptionLanguage }
     func setSpeechLanguage(_ language: String, for id: UUID) {
@@ -105,7 +117,8 @@ final class AppStore: ObservableObject {
         return destination
     }
 
-    init(root: URL? = nil, initializeSystemServices: Bool = true, notionConnection: NotionConnection? = nil) {
+    init(root: URL? = nil, initializeSystemServices: Bool = true, notionConnection: NotionConnection? = nil,
+         audioRetentionDefaults: UserDefaults = .standard, audioRetentionService: AudioRetentionService? = nil) {
         #if DEBUG
         let previewRoot = (Bundle.main.object(forInfoDictionaryKey: "MeetingDeskPreviewArchive") as? String).map { URL(fileURLWithPath: $0, isDirectory: true) }
         #else
@@ -114,6 +127,12 @@ final class AppStore: ObservableObject {
         systemServicesEnabled = initializeSystemServices && previewRoot == nil
         notion = notionConnection ?? NotionConnection(loadCredentials: systemServicesEnabled)
         library = MeetingLibrary(root: root ?? previewRoot)
+        self.audioRetentionDefaults = audioRetentionDefaults
+        self.audioRetentionService = audioRetentionService ?? AudioRetentionService(library: library)
+        if let stored = audioRetentionDefaults.data(forKey: Self.audioRetentionPolicyKey),
+           let policy = try? JSONDecoder().decode(AudioRetentionPolicy.self, from: stored) {
+            audioRetentionPolicy = policy
+        }
         reload()
         if initializeSystemServices && previewRoot == nil { refreshKey(); refreshMicrophones() }
         Publishers.CombineLatest4(recorder.$isRecording, $isBusy, $showMicrophoneCheck, notion.$isExporting)
@@ -124,6 +143,9 @@ final class AppStore: ObservableObject {
                 let active = busy || self.hasPendingRecordingSession
                 self.updates.setWorkInProgress(active)
                 self.meetingDetector.setSuspended(active)
+                if !active && self.audioRetentionCleanupPending && self.systemServicesEnabled {
+                    Task { @MainActor [weak self] in self?.runAudioRetentionCleanup() }
+                }
             }
             .store(in: &updateSubscriptions)
         notion.objectWillChange
@@ -135,12 +157,74 @@ final class AppStore: ObservableObject {
             self.errorMessage = "Kayıt kesildi: \(error.localizedDescription). Kaydedilmiş bölüm korunuyor."
             Task { await self.finishRecording(interrupted: true) }
         }
+        playbackCompletion.onFinish = { [weak self] finishedPlayer in
+            Task { @MainActor in
+                guard let self, self.player === finishedPlayer else { return }
+                self.stopPlayback()
+            }
+        }
+        if systemServicesEnabled {
+            // Check on launch and hourly while open; deferred work is retried
+            // once idle. Never run automatic cleanup in tests or previews.
+            audioRetentionTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.runAudioRetentionCleanup() }
+            }
+            Task { @MainActor [weak self] in self?.runAudioRetentionCleanup(force: true) }
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let player = self.player else { return }
                 self.playbackTime = player.currentTime
                 self.isPlaying = player.isPlaying
             }
+        }
+    }
+
+    deinit {
+        timer?.invalidate()
+        audioRetentionTimer?.invalidate()
+    }
+
+    func setAudioRetentionPolicy(_ policy: AudioRetentionPolicy) {
+        guard !workInProgress, policy != audioRetentionPolicy else { return }
+        do {
+            let data = try JSONEncoder().encode(policy)
+            audioRetentionDefaults.set(data, forKey: Self.audioRetentionPolicyKey)
+            audioRetentionPolicy = policy
+            audioRetentionCleanupPending = policy.days != nil
+            lastAudioRetentionCheck = nil
+            audioRetentionStatus = policy.days == nil ? "Otomatik ses temizliği kapatıldı." : "Saklama süresi kaydedildi. Uygun ses kayıtları kontrol edilecek."
+            if systemServicesEnabled { runAudioRetentionCleanup(force: true) }
+        } catch { errorMessage = "Ses saklama süresi kaydedilemedi: \(error.localizedDescription)" }
+    }
+
+    func runAudioRetentionCleanup(now: Date = Date(), force: Bool = false) {
+        guard audioRetentionPolicy.days != nil else {
+            audioRetentionCleanupPending = false
+            return
+        }
+        guard force || audioRetentionCleanupPending || (lastAudioRetentionCheck.map({ now.timeIntervalSince($0) >= 3_600 }) ?? true) else { return }
+        // A paused player still owns its audio file. Let the user finish or
+        // release playback rather than stopping it for automatic cleanup.
+        guard !workInProgress, player == nil, !isPlaying else {
+            audioRetentionCleanupPending = true
+            return
+        }
+        audioRetentionCleanupPending = false
+        isBusy = true
+        defer { isBusy = false }
+        let result = audioRetentionService.cleanup(meetings: meetings, policy: audioRetentionPolicy, now: now, protectedMeetingIDs: [])
+        meetings = result.updatedMeetings
+        if let meeting = selected, !playbackSources(for: meeting).contains(playbackSource) {
+            playbackSource = playbackSources(for: meeting).first ?? .mixed
+        }
+        lastAudioRetentionCheck = now
+        if !result.failureMessages.isEmpty {
+            audioRetentionStatus = "Bazı ses kayıtları Çöp Sepeti’ne taşınamadı; sonraki kontrolde yeniden denenecek. " + result.failureMessages[0]
+        } else if result.removedRecordingCount > 0 {
+            audioRetentionStatus = "Süresi dolan \(result.removedRecordingCount) toplantının ses kaydı Çöp Sepeti’ne taşındı. Transkript ve özetler korundu."
+        } else {
+            audioRetentionStatus = "Ses kayıtları kontrol edildi; süresi dolan uygun kayıt yok."
         }
     }
 
@@ -214,6 +298,7 @@ final class AppStore: ObservableObject {
             // Persist the destination before capture so an interrupted session stays discoverable.
             guard update(meeting.id, {
                 $0.audioFileName = "recording.m4a"; $0.source = "Mac kaydı"
+                $0.audioSavedAt = nil; $0.audioDeletedAt = nil; $0.audioDeletionPending = nil
                 $0.microphoneDeviceID = deviceID; $0.microphoneDeviceName = deviceName; $0.microphoneGain = gain
             }) else { throw MeetingError.message("Toplantı kaydedilemediği için ses kaydı başlatılmadı.") }
             let url = library.directory(for: meeting.id).appendingPathComponent("recording.m4a")
@@ -238,7 +323,7 @@ final class AppStore: ObservableObject {
         var saved = false
         do {
             let duration = try await recorder.stop()
-            saved = update(id) { $0.duration = duration }
+            saved = update(id) { $0.duration = duration; $0.audioSavedAt = Date(); $0.audioDeletedAt = nil; $0.audioDeletionPending = nil }
             statusMessage = saved ? "Kayıt hazır. Transkripti oluşturabilir veya yalnız mikrofonu dinleyebilirsin." : "Ses kaydı korundu; toplantı bilgileri kaydedilemedi."
         } catch {
             errorMessage = error.localizedDescription
@@ -264,7 +349,7 @@ final class AppStore: ObservableObject {
     }
 
     func transcribe() {
-        guard let meeting = selected, meeting.audioFileName != nil, !workInProgress else { return }
+        guard let meeting = selected, let audio = library.audioURL(for: meeting), FileManager.default.fileExists(atPath: audio.path), !workInProgress else { return }
         let mode = processingMode
         runProcessing(message: mode == .local ? "Transkript Mac’te hazırlanıyor. İlk kullanımda dil modeli indirilebilir…" : "Konuşmacılar ve transkript hazırlanıyor…") { [weak self] in
             try await self?.transcribeMeeting(meeting.id, mode: mode)
@@ -330,7 +415,7 @@ final class AppStore: ObservableObject {
         defer { isBusy = false }
         do {
             let duration = try await AudioRecorder.recover(url: destination)
-            guard update(meeting.id, { $0.audioFileName = "recording.m4a"; $0.duration = duration; $0.source = "Mac kaydı" }) else {
+            guard update(meeting.id, { $0.audioFileName = "recording.m4a"; $0.duration = duration; $0.source = "Mac kaydı"; $0.audioSavedAt = Date(); $0.audioDeletedAt = nil; $0.audioDeletionPending = nil }) else {
                 throw MeetingError.message("Ses dosyası kurtarıldı, ancak toplantı bilgileri kaydedilemedi. Ses kaydı korundu.")
             }
             statusMessage = "Kayıt kurtarıldı. Transkripti oluşturabilirsin."
@@ -449,12 +534,16 @@ final class AppStore: ObservableObject {
         meeting.title = source.deletingPathExtension().lastPathComponent
         meeting.source = "İçe aktarılan kayıt"
         meeting.audioFileName = "recording." + (source.pathExtension.isEmpty ? "m4a" : source.pathExtension.lowercased())
+        meeting.audioSavedAt = Date(); meeting.audioDeletedAt = nil; meeting.audioDeletionPending = nil
         do {
             let destination = library.audioURL(for: meeting)!
             try FileManager.default.copyItem(at: source, to: destination)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
-            update(meeting.id) { $0 = meeting }
+            guard update(meeting.id, { $0 = meeting }) else { return }
+            isBusy = true
+            statusMessage = "Kayıt süresi okunuyor…"
             Task {
+                defer { self.isBusy = false }
                 do {
                     let duration = try await AVURLAsset(url: destination).load(.duration).seconds
                     if duration.isFinite { self.update(meeting.id) { $0.duration = duration } }
@@ -478,11 +567,12 @@ final class AppStore: ObservableObject {
     func revealArchive() { NSWorkspace.shared.open(library.root) }
 
     func togglePlayback() {
-        guard let meeting = selected, let url = library.audioURL(for: meeting, source: playbackSource), !recorder.isRecording else { return }
+        guard let meeting = selected, let url = library.audioURL(for: meeting, source: playbackSource), FileManager.default.fileExists(atPath: url.path), !recorder.isRecording else { return }
         do {
             if playbackID != meeting.id {
                 stopPlayback()
                 player = try AVAudioPlayer(contentsOf: url)
+                player?.delegate = playbackCompletion
                 playbackID = meeting.id
                 playbackDuration = player?.duration ?? 0
             }
@@ -493,11 +583,12 @@ final class AppStore: ObservableObject {
     }
 
     func seek(_ time: Double) {
-        guard let meeting = selected, let url = library.audioURL(for: meeting, source: playbackSource), !recorder.isRecording else { return }
+        guard let meeting = selected, let url = library.audioURL(for: meeting, source: playbackSource), FileManager.default.fileExists(atPath: url.path), !recorder.isRecording else { return }
         do {
             if playbackID != meeting.id {
                 stopPlayback()
                 player = try AVAudioPlayer(contentsOf: url)
+                player?.delegate = playbackCompletion
                 playbackID = meeting.id
                 playbackDuration = player?.duration ?? 0
             }
@@ -509,5 +600,13 @@ final class AppStore: ObservableObject {
     func stopPlayback() {
         player?.stop(); player = nil; playbackID = nil
         playbackTime = 0; playbackDuration = 0; isPlaying = false
+        if audioRetentionCleanupPending && systemServicesEnabled {
+            Task { @MainActor [weak self] in self?.runAudioRetentionCleanup() }
+        }
     }
+}
+
+private final class AudioPlaybackCompletion: NSObject, AVAudioPlayerDelegate {
+    var onFinish: ((AVAudioPlayer) -> Void)?
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) { onFinish?(player) }
 }

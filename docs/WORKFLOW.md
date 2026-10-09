@@ -1,4 +1,4 @@
-# Toplantı iş akışı · 0.5.0
+# Toplantı iş akışı · 0.5.1
 
 ## Kayıttan önce
 
@@ -23,6 +23,16 @@ Ayrı sesleri olan kayıtlarda mikrofon ve toplantı sesi ayrı çözülür. “
 ## Paylaşım
 
 **Paylaş** ekranında Özet ve kararlar / Sadece aksiyonlar / Tüm transkript seçin. Önizleme, kopyalama ve dosyalar aynı seçili içeriği kullanır. **Kendi notlarımı dahil et** başlangıçta kapalıdır; her paylaşımda bilinçli olarak açılmalıdır. PDF metin olarak seçilebilir ve uzun toplantılarda sayfalara bölünür. Özet/aksiyon çıktılarında kaynak zamanı gösterilir; tam Markdown dökümde zaman bağlantıları konuşma bölümlerine gider.
+
+## Ses kayıtlarını saklama · 0.5.1
+
+**Ayarlar → Ses kayıtlarını saklama** bölümünden 7, 30, 90, 180 veya 365 gün seçin; **Özel süre…** ile 1–3650 gün belirleyebilirsiniz. Varsayılan **Otomatik silme kapalı**dır. Değişikliği **Uygula** ile kaydedin. Otomatik silmeyi açarken veya süreyi kısaltırken, süreyi doldurmuş mevcut ses kayıtlarının da etkileneceği gösterilir ve onay istenir.
+
+Süre dolunca birleşik kayıt, mikrofon ve toplantı sesi dosyaları Mac’in **Çöp Sepeti**’ne taşınır. Transkript, özet, kişisel notlar, kontrol durumu ve önceki metin sürümleri arşivde kalır; okunabilir ve paylaşılabilir. Ses kaldırılınca uygulama bunu belirtir; bu kayıt artık dinlenemez veya yeniden transkripte çevrilemez. Diskteki alan Çöp Sepeti boşaltılınca geri kazanılır.
+
+Süre, sesin kaydedildiği veya içe aktarıldığı tarihten başlar. Eski arşivlerde toplantı tarihi ile ses dosyalarının son değiştirilme tarihlerinden en yenisi kullanılır; eski toplantıya yeni eklenen ses hemen temizlenmez. Uygulama açılınca ve açık kaldığı sürece yaklaşık saatte bir kontrol edilir. Uygulama kapalıyken temizlik çalışmaz. Kayıt, kurtarma, mikrofon denemesi, dinleme, transkript/özet hazırlama veya Notion aktarımı sürerken kontrol ertelenir; duraklatılmış dinleme de ses dosyalarını korur. Yarım kalmış kayıt kurtarma dosyaları temizlenmez.
+
+Bir ses dosyası taşınamazsa kalan dosyalar korunur ve sonraki kontrolde yeniden denenir. Bütün ses dosyaları kaldırılmadan toplantı tamamıyla temizlenmiş olarak işaretlenmez. Otomatik testler geçici arşiv ve sahte taşıma işlemleri kullanır; gerçek kullanıcı arşivine veya Çöp Sepeti’ne dokunmaz.
 
 ## Arama
 

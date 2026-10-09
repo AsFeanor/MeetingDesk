@@ -172,7 +172,7 @@ struct RootView: View {
                             .font(.caption).disabled(store.workInProgress || store.processingMode != .local)
                         if store.processingMode != .local { Text("Otomatik hazırlama yalnız ücretsiz yerel modda çalışır.").font(.caption2).foregroundStyle(.secondary) }
                     }
-                } else if meeting.audioFileName != nil {
+                } else if !store.playbackSources(for: meeting).isEmpty {
                     if let microphone = meeting.microphoneDeviceName {
                         Text("Kayıt mikrofonu: \(microphone) · Güçlendirme: \(Int(RecorderMix.microphoneGain(meeting.microphoneGain ?? 1)))×").font(.caption2).foregroundStyle(.secondary)
                     }
@@ -192,7 +192,7 @@ struct RootView: View {
                             .disabled(store.isBusy)
                         Text(timeLabel(store.playbackDuration > 0 ? store.playbackDuration : meeting.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         Button(meeting.segments.isEmpty ? "Transkript oluştur" : "Dökümü yeniden oluştur") { store.transcribe(); tab = .transcript }
-                                .buttonStyle(.borderedProminent).disabled(store.isBusy)
+                                .buttonStyle(.borderedProminent).disabled(store.isBusy || !store.playbackSources(for: meeting).contains(.mixed))
                     }
                     if store.processingMode == .local {
                         Text("Ücretsiz yerel transkript · Konuşma dili: \(store.speechLanguage(for: meeting)). Dil otomatik algılanmaz. İlk kullanımda Apple’ın dil modeli indirilebilir.").font(.caption2).foregroundStyle(.secondary)
@@ -203,7 +203,15 @@ struct RootView: View {
                         Text("Ses kaydı OpenAI’a gönderilir; API kullanım ücreti hesabına yansır. Yeniden oluştururken önceki döküm saklanır.").font(.caption2).foregroundStyle(.secondary)
                     }
                 }
-                if meeting.audioFileName == nil && meeting.segments.isEmpty && !recorder.isRecording {
+                if meeting.audioDeletionPending == true && !recorder.isRecording {
+                    Label("Ses temizliği henüz tamamlanmadı; kalan dosyalar sonraki kontrolde yeniden denenecek.", systemImage: "clock.arrow.circlepath")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if meeting.audioDeletedAt != nil && meeting.audioFileName == nil && !recorder.isRecording {
+                    Label("Ses kaydı saklama süresi dolduğu için kaldırıldı. Transkript ve özetler korunur.", systemImage: "archivebox")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if meeting.audioFileName == nil && meeting.audioDeletedAt == nil && meeting.segments.isEmpty && !recorder.isRecording {
                     Text("Mac’te çalan diğer uygulamaların sesi de kayda girebilir. Kulaklık, mikrofon yankısını azaltır.").font(.caption2).foregroundStyle(.secondary)
                 }
                 HStack {
@@ -516,6 +524,8 @@ private struct SettingsView: View {
             Toggle("Kayıt sırasında küçük kontrol kartını göster", isOn: $store.showRecordingPanel)
             Text("Karttan süreyi ve ses göstergelerini izleyebilir, duraklatabilir veya bitirip saklayabilirsin. Kartı gizlersen kayıt sürer; menü çubuğundan tekrar açabilirsin.")
                 .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            AudioRetentionSettingsView(store: store)
             Divider()
             NotionConnectionView(connection: store.notion)
             Divider()
