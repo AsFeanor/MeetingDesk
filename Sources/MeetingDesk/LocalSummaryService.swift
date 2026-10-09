@@ -38,13 +38,16 @@ struct LocalSummaryService {
             throw MeetingError.message("Mac’teki yerel model seçilen çıktı dilini desteklemiyor. Desteklenen bir çıktı dili seçin. Transkript korunuyor.")
         }
         let instructions = Self.instructions(language: language, template: meeting.template)
+        // Guided generation must enforce the selected layout rather than asking
+        // the model to invent section IDs and rejecting them after generation.
+        let schema = try Self.generationSchema(template: meeting.template)
         var chunks = try Self.sourceChunks(meeting: meeting)
         // Reserve enough room for the entire guided response. No source suffix is
         // dropped; an oversized chunk is recursively divided into smaller chunks.
         if #available(macOS 26.4, *) {
             do {
                 let instructionTokens = try await model.tokenCount(for: Instructions(instructions))
-                let schemaTokens = try await model.tokenCount(for: LocalGeneratedNotes.generationSchema)
+                let schemaTokens = try await model.tokenCount(for: schema)
                 let fixed = instructionTokens + schemaTokens
                 chunks = try await Self.fit(chunks: chunks, model: model, fixedTokens: fixed)
             } catch is CancellationError { throw CancellationError() }
@@ -63,7 +66,7 @@ struct LocalSummaryService {
             let session = LanguageModelSession(model: model, instructions: instructions)
             do {
                 let response = try await session.respond(to: Self.prompt(sources: sources),
-                                                         generating: LocalGeneratedNotes.self,
+                                                         schema: schema,
                                                          options: GenerationOptions(temperature: 0.1, maximumResponseTokens: 1_600))
                 try Task.checkCancellation()
                 let notes = try Self.convert(response.content, part: index + 1)
@@ -202,6 +205,48 @@ struct LocalSummaryService {
         """
     }
 
+    /// The topic branch requires an exact selected-template section ID. Other
+    /// categories retain their own shape and never acquire a context assignment.
+    /// One union array preserves the existing 12-item guided-response ceiling.
+    @available(macOS 26.0, *)
+    static func generationSchema(template: MeetingTemplate) throws -> GenerationSchema {
+        let string = DynamicGenerationSchema(type: String.self)
+        let evidence = DynamicGenerationSchema(arrayOf: string, minimumElements: 1, maximumElements: 4)
+        let contextSections = template.contextSections
+        let section = DynamicGenerationSchema(
+            name: "LocalContextSectionID",
+            description: contextSections.map { "\($0.id): \($0.guidance)" }.joined(separator: "\n"),
+            anyOf: contextSections.map(\.id))
+        let topic = DynamicGenerationSchema(name: "LocalGeneratedTopic", properties: [
+            .init(name: "category", description: "Discussion context, never an accepted decision or action.",
+                  schema: .init(name: "LocalTopicCategory", anyOf: ["topic"])),
+            .init(name: "text", description: "One compact factual statement supported by cited source entries.", schema: string),
+            .init(name: "title", description: "Short descriptive topic title.", schema: string),
+            .init(name: "sectionID", description: "The exact context section ID that fits this topic in the selected meeting template.", schema: section),
+            .init(name: "evidence", description: "Exact source entry IDs supporting this topic.", schema: evidence)
+        ])
+        let item = DynamicGenerationSchema(name: "LocalGeneratedNonTopic", properties: [
+            .init(name: "category", description: "Decision requires explicit agreement; action requires an agreed concrete next step; question is unresolved; idea is a proposal or investigation.",
+                  schema: .init(name: "LocalNonTopicCategory", anyOf: ["decision", "action", "question", "idea"])),
+            .init(name: "text", description: "One compact factual statement supported by cited source entries.", schema: string),
+            .init(name: "owner", description: "Only the explicitly named responsible person for an action; otherwise omit.", schema: string, isOptional: true),
+            .init(name: "due", description: "Exact due phrase from cited text for an action; otherwise omit.", schema: string, isOptional: true),
+            .init(name: "evidence", description: "Exact source entry IDs supporting this item.", schema: evidence)
+        ])
+        let choice = DynamicGenerationSchema(name: "LocalGeneratedItem", anyOf: [topic, item])
+        let notes = DynamicGenerationSchema(name: "LocalGeneratedNotes", properties: [
+            .init(name: "summary", description: "A factual two to four sentence summary of all source entries, retaining uncertainty.", schema: string),
+            .init(name: "items", description: "Compact notes from this section; no fabricated agreements or assignments.",
+                  schema: .init(arrayOf: choice, maximumElements: 12))
+        ])
+        return try GenerationSchema(root: notes, dependencies: [])
+    }
+
+    @available(macOS 26.0, *)
+    static func convert(_ generated: GeneratedContent, part: Int) throws -> MeetingNotes {
+        try convert(LocalGeneratedNotes(generated), part: part)
+    }
+
     @available(macOS 26.0, *)
     private static func convert(_ generated: LocalGeneratedNotes, part: Int) throws -> MeetingNotes {
         var notes = MeetingNotes(summary: generated.summary, decisions: [], actions: [], questions: [], ideas: [], topics: [])
@@ -213,7 +258,18 @@ struct LocalSummaryService {
             case .action: notes.actions.append(ActionItem(id: id, text: item.text, owner: item.owner, due: item.due, evidence: evidence))
             case .question: notes.questions.append(EvidenceItem(id: id, text: item.text, evidence: evidence))
             case .idea: notes.ideas.append(EvidenceItem(id: id, text: item.text, evidence: evidence))
-            case .topic: notes.topics.append(TopicNote(id: id, title: item.title ?? item.text, text: item.text, evidence: evidence, sectionID: item.sectionID))
+            case .topic:
+                // These fields are required by the topic schema. Keep this check
+                // at the generated-response boundary; legacy notes may omit them.
+                guard let sectionID = item.sectionID,
+                      !sectionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw MeetingError.message("Özet seçilen toplantı şablonuna göre bölümlendirilemedi. Notlar kaydedilmedi; transkript korunuyor.")
+                }
+                guard let title = item.title,
+                      !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw MeetingError.message("Yerel özette başlıksız bir konu var. Notlar kaydedilmedi; transkript korunuyor.")
+                }
+                notes.topics.append(TopicNote(id: id, title: title, text: item.text, evidence: evidence, sectionID: sectionID))
             }
         }
         return notes

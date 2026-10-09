@@ -1,4 +1,4 @@
-# Toplantı iş akışı · 0.5.1
+# Toplantı iş akışı · 0.5.2
 
 ## Kayıttan önce
 
@@ -17,6 +17,8 @@ Ayrı sesleri olan kayıtlarda mikrofon ve toplantı sesi ayrı çözülür. “
 ## Toplantı şablonları
 
 **Genel toplantı** özet, karar, aksiyon ve açık soruları dengeli gösterir. **Ekip toplantısı** durum/ilerleme, engeller/bağımlılıklar ve sonraki adımları; **Ürün değerlendirmesi** ihtiyaçlar/problemler, geri bildirimler ve seçenekleri; **Müşteri görüşmesi** müşteri ihtiyaçları, endişeler/beklentiler ve takip konularını öne çıkarır. Kaynakta bilgi yoksa bölüm doldurulmaz.
+
+Yerel model konu bölümlerini seçilen şablonun geçerli bölümleriyle sınırlı üretir. Kararlar, aksiyonlar, sorular ve fikirler konu bölümlerinden ayrı kalır. Önceki sürümde “şablona ait olmayan bölüm” nedeniyle özet oluşmadıysa güncellemeden sonra mevcut transkripti kullanarak **Özeti yenile** ile tekrar oluşturabilirsiniz.
 
 Şablon değiştirip **Özeti yenile** kullanın. Başarılı yenilemeye kadar mevcut not eski şablonuyla gösterilir ve bu durum açıklanır. Eski dosyalarda üretim şablonu bilinmediğinden genel düzen kullanılır. Başka şablona ait elle düzeltilmiş özet, yeni model özetinin yerine geçmez; **Korunan özet düzeltmesi** adıyla ayrı bir konu notu olarak saklanır. Aynı şablonu yenilerken düzeltmeler korunur. Not sürümünü geri getirmek üretildiği şablonu da geri getirir. Ekran, düzenleyici ve bütün paylaşım biçimleri aynı başlık/sırayı kullanır.
 
