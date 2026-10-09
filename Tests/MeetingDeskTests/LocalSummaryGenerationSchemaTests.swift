@@ -224,7 +224,7 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
 
     @available(macOS 26.0, *)
     private func schemaObject(for template: MeetingTemplate) throws -> [String: Any] {
-        try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(LocalSummaryService.generationSchema(template: template))) as? [String: Any])
+        try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(LocalSummaryService.generationSchema(template: template, evidenceIDs: ["s1"]))) as? [String: Any])
     }
 
     /// The SDK encodes string choices either as one enum or as anyOf enum

@@ -1,11 +1,10 @@
-## Toplantı 0.5.2
+## Toplantı 0.5.3
 
-Yerel özetin “seçilen toplantı şablonuna ait olmayan bir bölüm” hatasıyla sürekli durması düzeltildi.
+Yerel özetin başka konuşma bölümüne ait bir kaynak bağlantısı nedeniyle durması düzeltildi.
 
-- Genel, ekip, ürün ve müşteri şablonlarında konu bölümleri artık seçilen şablonun izin verdiği bölümlerle sınırlı üretilir. Eksik veya başka şablona ait bölüm etiketleri üretim sırasında engellenir.
-- Kararlar, aksiyonlar, açık sorular ve fikirler kendi kategorilerinde kalır; konu bölümüne zorla taşınmaz.
-- Konuşmada bulunmayan sorumlu ve tarihler, geçersiz kaynak bağlantıları ve eksik yanıtlar kaydedilmez.
-- Uzun toplantıların bölüm bölüm özetlenmesinde bütün kaynaklar ve şablon düzeni korunur.
+- Model, her bölümde kaynak bağlantılarını yalnız o bölümün konuşmalarından seçer. Uzun kayıt kimliklerini yeniden yazmak yerine kısa, doğrulanan kaynak etiketleri kullanılır; kaydedilen notlar asıl transkript bağlantılarını korur.
+- Uzun toplantılar hazırlanırken her bölümün kaynakları ve çıktı biçimi birlikte hesaba katılır. Transkript metni atlanmaz.
+- Genel, ekip, ürün ve müşteri şablonları korunur. Kaynakta bulunmayan sorumlu ve tarihler, geçersiz bağlantılar ve eksik notlar kaydedilmez.
 
 Güncellemeden sonra aynı toplantıyı açıp seçtiğiniz şablonla **Özeti yenile** kullanın. Transkripti yeniden oluşturmanız gerekmez. Mevcut transkript ve notlar aynı arşivdedir.
 
