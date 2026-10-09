@@ -16,23 +16,21 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
             let branches = try XCTUnwrap(union["anyOf"] as? [[String: Any]]).map { try resolve($0, in: schema) }
             XCTAssertEqual(branches.count, 2, "Context and factual note categories require separate structural constraints")
             let staticSchemaDescription = try schemaJSON(schema)
-            let context = try XCTUnwrap(branches.first { branch in
-                let properties = branch["properties"] as? [String: Any]
-                let category = properties?["category"] as? [String: Any]
-                return category?["enum"] as? [String] == ["topic"]
-            }, "Missing exact topic category branch in static generated schema: \(staticSchemaDescription)")
-            let item = try XCTUnwrap(branches.first { branch in
-                let properties = branch["properties"] as? [String: Any]
-                let category = properties?["category"] as? [String: Any]
-                return Set(category?["enum"] as? [String] ?? []) == Set(["decision", "action", "question", "idea"])
-            }, "Missing exact factual category branch in static generated schema: \(staticSchemaDescription)")
+            let classified = try branches.map { branch -> (schema: [String: Any], categories: Set<String>) in
+                let properties = try XCTUnwrap(branch["properties"] as? [String: Any])
+                let category = try XCTUnwrap(properties["category"] as? [String: Any])
+                return (branch, try finiteStringDomain(category, in: schema))
+            }
+            let context = try XCTUnwrap(classified.first { $0.categories == ["topic"] }?.schema,
+                                       "Missing exact topic category branch in static generated schema: \(staticSchemaDescription)")
+            let item = try XCTUnwrap(classified.first { $0.categories == ["decision", "action", "question", "idea"] }?.schema,
+                                    "Missing exact factual category branch in static generated schema: \(staticSchemaDescription)")
             let contextProperties = try XCTUnwrap(context["properties"] as? [String: Any])
-            let section = try resolve(try XCTUnwrap(contextProperties["sectionID"] as? [String: Any]), in: schema)
-            let choices = try XCTUnwrap(section["enum"] as? [String], "\(template.rawValue) must constrain section IDs")
+            let section = try XCTUnwrap(contextProperties["sectionID"] as? [String: Any])
+            let choices = try finiteStringDomain(section, in: schema)
             let expected = Set(template.contextSections.map(\.id))
-            XCTAssertEqual(Set(choices), expected, template.rawValue)
-            XCTAssertTrue(Set(choices).isDisjoint(with: everySection.subtracting(expected)), template.rawValue)
-            XCTAssertEqual(section["type"] as? String, "string")
+            XCTAssertEqual(choices, expected, template.rawValue)
+            XCTAssertTrue(choices.isDisjoint(with: everySection.subtracting(expected)), template.rawValue)
             XCTAssertTrue(try XCTUnwrap(context["required"] as? [String]).contains("sectionID"),
                           "Guided topic generation must assign a valid section rather than generating nil or an arbitrary string")
             XCTAssertEqual(context["additionalProperties"] as? Bool, false)
@@ -229,6 +227,26 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
         try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(LocalSummaryService.generationSchema(template: template))) as? [String: Any])
     }
 
+    /// The SDK encodes string choices either as one enum or as anyOf enum
+    /// leaves. Every leaf must remain a finite, non-null string domain.
+    private func finiteStringDomain(_ value: [String: Any], in root: [String: Any]) throws -> Set<String> {
+        let schema = try resolve(value, in: root)
+        if let choices = schema["anyOf"] as? [[String: Any]] {
+            guard !choices.isEmpty, schema["enum"] == nil,
+                  schema["type"] == nil || schema["type"] as? String == "string" else {
+                throw SchemaInspectionError.unboundedStringChoices
+            }
+            return try choices.reduce(into: Set<String>()) { domain, choice in
+                domain.formUnion(try finiteStringDomain(choice, in: root))
+            }
+        }
+        guard schema["type"] as? String == "string",
+              let choices = schema["enum"] as? [String], !choices.isEmpty else {
+            throw SchemaInspectionError.unboundedStringChoices
+        }
+        return Set(choices)
+    }
+
     private func schemaJSON(_ schema: [String: Any]) throws -> String {
         String(decoding: try JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys]), as: UTF8.self)
     }
@@ -268,6 +286,7 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
 
     private enum SchemaInspectionError: Error {
         case unsupportedReference(String)
+        case unboundedStringChoices
     }
 
     @available(macOS 26.0, *)
