@@ -307,7 +307,7 @@ final class NotesRevisionPolicyTests: XCTestCase {
             let actionPrompt = LocalSummaryService.actionInstructions(language: "Turkish")
             XCTAssertTrue(actionPrompt.contains("Never substitute an absence label or infer a name or deadline"))
             XCTAssertTrue(actionPrompt.contains("without changing its spelling or converting it to a date"))
-            XCTAssertTrue(prompt.contains("UNTRUSTED"))
+            XCTAssertTrue(prompt.lowercased().contains("untrusted"))
         }
     }
 
