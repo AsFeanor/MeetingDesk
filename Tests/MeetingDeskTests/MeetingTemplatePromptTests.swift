@@ -2,22 +2,44 @@ import XCTest
 @testable import MeetingDesk
 
 final class MeetingTemplatePromptTests: XCTestCase {
-    func testLocalInstructionsGiveEachTemplateStructuredContextAndSummaryFocus() {
+    func testLocalContextInstructionsGiveEachTemplateStructuredContextAndSummaryFocus() {
         for template in MeetingTemplate.allCases {
-            let instructions = LocalSummaryService.instructions(language: "Turkish", template: template)
+            let instructions = LocalSummaryService.contextInstructions(language: "Turkish", template: template)
+            XCTAssertEqual(instructions, LocalSummaryService.instructions(language: "Turkish", template: template))
             XCTAssertTrue(instructions.contains(template.generationGuidance))
             XCTAssertTrue(instructions.contains("sectionID"))
             for section in template.contextSections {
                 XCTAssertTrue(instructions.contains("\(section.id):"))
             }
-            XCTAssertTrue(instructions.contains("UNTRUSTED"))
-            XCTAssertTrue(instructions.contains("Always return owner and due as strings for each action"))
-            XCTAssertTrue(instructions.contains("For an absent value return exactly \"\", an empty string."))
-            XCTAssertTrue(instructions.contains("An investigation is an idea when merely proposed, but an action when someone clearly commits"))
-            XCTAssertTrue(instructions.contains("Capture a supported action even when no owner or due date is stated"))
+            XCTAssertTrue(instructions.lowercased().contains("untrusted"))
+            XCTAssertTrue(instructions.contains("Actions are extracted in a separate request: return actions: [] here."))
+            XCTAssertFalse(instructions.contains("Elif"))
+            XCTAssertFalse(instructions.contains("cuma günü"))
         }
-        XCTAssertNotEqual(LocalSummaryService.instructions(language: "Turkish", template: .team),
-                          LocalSummaryService.instructions(language: "Turkish", template: .customer))
+        XCTAssertNotEqual(LocalSummaryService.contextInstructions(language: "Turkish", template: .team),
+                          LocalSummaryService.contextInstructions(language: "Turkish", template: .customer))
+    }
+
+    func testDedicatedActionInstructionsPreservePendingWorkAndMetadataGrounding() {
+        let instructions = LocalSummaryService.actionInstructions(language: "Turkish")
+        let lowercased = instructions.lowercased()
+        XCTAssertTrue(instructions.contains("Turkish"))
+        XCTAssertTrue(lowercased.contains("untrusted"))
+        XCTAssertTrue(lowercased.contains("pending tasks"))
+        XCTAssertTrue(lowercased.contains("clearly committed"))
+        XCTAssertTrue(lowercased.contains("committed investigation"))
+        XCTAssertTrue(lowercased.contains("merely proposed or conditional work"))
+        XCTAssertTrue(lowercased.contains("cancelled tasks"))
+        XCTAssertTrue(lowercased.contains("already finished work"))
+        XCTAssertTrue(lowercased.contains("return an empty actions array"))
+        XCTAssertTrue(lowercased.contains("exact explicitly named responsible person"))
+        XCTAssertTrue(lowercased.contains("anonymous speaker labels are not identities"))
+        XCTAssertTrue(lowercased.contains("copy the exact due phrase"))
+        XCTAssertTrue(lowercased.contains("without changing its spelling or converting it to a date"))
+        XCTAssertTrue(instructions.contains("output exactly \"\", an empty string"))
+        XCTAssertTrue(lowercased.contains("both fields are required strings"))
+        XCTAssertFalse(instructions.contains("Elif"))
+        XCTAssertFalse(instructions.contains("cuma günü"))
     }
 
     func testOpenAIPromptUsesSelectedTemplateWithoutWeakeningGrounding() async throws {
