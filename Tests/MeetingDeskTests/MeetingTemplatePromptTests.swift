@@ -11,8 +11,9 @@ final class MeetingTemplatePromptTests: XCTestCase {
                 XCTAssertTrue(instructions.contains("\(section.id):"))
             }
             XCTAssertTrue(instructions.contains("UNTRUSTED"))
-            XCTAssertTrue(instructions.contains("Owner and due are nil"))
-            XCTAssertTrue(instructions.contains("proposals, investigations, conditional plans and estimates are ideas"))
+            XCTAssertTrue(instructions.contains("Always return owner and due for each action"))
+            XCTAssertTrue(instructions.contains("An investigation is an idea when merely proposed, but an action when someone clearly commits"))
+            XCTAssertTrue(instructions.contains("Capture a supported action even when no owner or due date is stated"))
         }
         XCTAssertNotEqual(LocalSummaryService.instructions(language: "Turkish", template: .team),
                           LocalSummaryService.instructions(language: "Turkish", template: .customer))

@@ -2,9 +2,11 @@ import XCTest
 import FoundationModels
 @testable import MeetingDesk
 
-/// Synthetic source IDs and generated JSON exercise guided-generation boundaries
-/// without invoking Apple Intelligence or reading the user's meeting archive.
+/// Synthetic source IDs and generated JSON exercise source boundaries without
+/// invoking Apple Intelligence or reading the user's meeting archive.
 final class LocalSummaryEvidenceGenerationTests: XCTestCase {
+    private let categories = ["actions", "decisions", "questions", "ideas", "topics"]
+
     func testEvidenceSchemaHasExactlyTheCurrentChunkAliasesForEveryTemplateAndCategory() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let scope = try LocalSummaryService.evidenceScope(sources: [
@@ -15,25 +17,19 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         for template in MeetingTemplate.allCases {
             let schema = try schemaObject(template: template, evidenceIDs: scope.evidenceIDs)
             let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
-            let itemArray = try resolve(try XCTUnwrap(properties["items"] as? [String: Any]), in: schema)
-            let union = try resolve(try XCTUnwrap(itemArray["items"] as? [String: Any]), in: schema)
-            let branches = try XCTUnwrap(union["anyOf"] as? [[String: Any]])
-            XCTAssertEqual(branches.count, 2)
-            var categories = Set<String>()
-            for branch in branches {
-                let resolved = try resolve(branch, in: schema)
-                let itemProperties = try XCTUnwrap(resolved["properties"] as? [String: Any])
-                categories.formUnion(try finiteStringDomain(try XCTUnwrap(itemProperties["category"] as? [String: Any]), in: schema))
-                XCTAssertTrue(try XCTUnwrap(resolved["required"] as? [String]).contains("evidence"))
-                let evidence = try resolve(try XCTUnwrap(itemProperties["evidence"] as? [String: Any]), in: schema)
+            for category in categories {
+                let array = try resolve(try XCTUnwrap(properties[category] as? [String: Any]), in: schema)
+                let item = try resolve(try XCTUnwrap(array["items"] as? [String: Any]), in: schema)
+                let fields = try XCTUnwrap(item["properties"] as? [String: Any])
+                XCTAssertTrue(try XCTUnwrap(item["required"] as? [String]).contains("evidence"))
+                let evidence = try resolve(try XCTUnwrap(fields["evidence"] as? [String: Any]), in: schema)
                 XCTAssertEqual(evidence["type"] as? String, "array")
                 XCTAssertEqual(evidence["minItems"] as? Int, 1)
                 XCTAssertEqual(evidence["maxItems"] as? Int, 4)
                 let choices = try finiteStringDomain(try XCTUnwrap(evidence["items"] as? [String: Any]), in: schema)
-                XCTAssertEqual(choices, Set(scope.evidenceIDs), template.rawValue)
+                XCTAssertEqual(choices, Set(scope.evidenceIDs), "\(template.rawValue).\(category)")
                 XCTAssertTrue(choices.isDisjoint(with: ["opaque-first-identifier", "opaque-second-identifier", "foreign-chunk-id", "", "s3"]))
             }
-            XCTAssertEqual(categories, ["topic", "decision", "action", "question", "idea"])
         }
     }
 
@@ -53,29 +49,26 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         let opaque = "65fe93838d20-c4ea-01"
         let long = String(repeating: "a", count: 240)
         let unicode = "İstanbul/özel 👩🏽‍💻 kimliği \"\\"
-        let original = [
+        let originals = [
             source(id: opaque, speaker: "Konuşmacı A", start: 0, end: 3, text: "First synthetic source."),
             source(id: long, speaker: "Konuşmacı B", start: 3, end: 7, text: "Second synthetic source."),
             source(id: unicode, speaker: "Konuşmacı C", start: 7, end: 9, text: "Third synthetic source.")
         ]
-        let scope = try LocalSummaryService.evidenceScope(sources: original)
+        let scope = try LocalSummaryService.evidenceScope(sources: originals)
         XCTAssertEqual(scope.evidenceIDs, ["s1", "s2", "s3"])
         XCTAssertEqual(scope.sources.map(\.id), ["s1", "s2", "s3"])
         XCTAssertEqual(scope.originalIDsByAlias, ["s1": opaque, "s2": long, "s3": unicode])
-        for (source, aliased) in zip(original, scope.sources) {
-            XCTAssertEqual(aliased.speaker, source.speaker)
-            XCTAssertEqual(aliased.start, source.start)
-            XCTAssertEqual(aliased.end, source.end)
-            XCTAssertEqual(aliased.text, source.text)
+        for (original, aliased) in zip(originals, scope.sources) {
+            XCTAssertEqual(aliased.speaker, original.speaker)
+            XCTAssertEqual(aliased.start, original.start)
+            XCTAssertEqual(aliased.end, original.end)
+            XCTAssertEqual(aliased.text, original.text)
         }
-        let notes = try LocalSummaryService.convert(try generated([
-            "summary": "Three synthetic sources were discussed.",
-            "items": [["category": "question", "text": "Which option remains open?", "evidence": ["s3", "s1", "s2", "s1"]]]
-        ]), part: 1, evidenceScope: scope)
+        let notes = try LocalSummaryService.convert(try generated(body(
+            questions: [["text": "Which option remains open?", "evidence": ["s3", "s1", "s2", "s1"]]])), part: 1, evidenceScope: scope)
         XCTAssertEqual(notes.questions.first?.evidence, [opaque, long, unicode].sorted())
-        let meeting = Meeting(title: "Synthetic IDs", segments: original.map { .init(id: $0.id, speaker: $0.speaker, start: $0.start, end: $0.end, text: $0.text) })
-        XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting,
-            allowedEvidence: Set(original.map(\.id)), requireTemplateSections: true))
+        XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting(template: .general, sources: originals),
+            allowedEvidence: Set(originals.map(\.id)), requireTemplateSections: true))
     }
 
     func testOriginalIDsThatLookLikeAliasesStillUseTheCurrentChunkMapping() throws {
@@ -84,12 +77,9 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         let scope = try LocalSummaryService.evidenceScope(sources: originals)
         XCTAssertEqual(scope.evidenceIDs, ["s1", "s2"])
         XCTAssertEqual(scope.originalIDsByAlias, ["s1": "s2", "s2": "s1"])
-        let notes = try LocalSummaryService.convert(try generated([
-            "summary": "Two synthetic options remain open.", "items": [
-                ["category": "question", "text": "First option?", "evidence": ["s1"]],
-                ["category": "idea", "text": "Second option remains open.", "evidence": ["s2"]]
-            ]
-        ]), part: 1, evidenceScope: scope)
+        let notes = try LocalSummaryService.convert(try generated(body(
+            questions: [["text": "First option?", "evidence": ["s1"]]],
+            ideas: [["text": "Second option remains open.", "evidence": ["s2"]]])), part: 1, evidenceScope: scope)
         XCTAssertEqual(notes.questions.first?.evidence, ["s2"])
         XCTAssertEqual(notes.ideas.first?.evidence, ["s1"])
         XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes,
@@ -110,27 +100,27 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
             XCTAssertEqual(notes.topics.first?.evidence, [originalID])
             XCTAssertEqual(notes.actions.first?.owner, "Ali")
             XCTAssertEqual(notes.actions.first?.due, "next Friday")
-            let meeting = meeting(template: template, sources: originals)
-            XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting,
+            XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting(template: template, sources: originals),
                 allowedEvidence: [originalID], scopedText: [originalID: originals[0].text], requireTemplateSections: true))
         }
     }
 
-    func testUnknownOriginalEmptyNullOrWrongTypedEvidenceIsRejectedAtConversionBoundary() throws {
+    func testUnknownOriginalEmptyNullOrWrongTypedEvidenceIsRejectedInEveryCategoryAtConversionBoundary() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let scope = try LocalSummaryService.evidenceScope(sources: [source(id: "opaque-current-source", text: "A synthetic option remains open.")])
         let invalid: [Any] = [["foreign-source"], ["s2"], ["opaque-current-source"], [""], [], NSNull(), "s1", [1], ["s1", "foreign-source"]]
         for template in MeetingTemplate.allCases {
-            for category in ["decision", "action", "question", "idea", "topic"] {
+            for category in categories {
                 for evidence in invalid {
-                    var item: [String: Any] = ["category": category, "text": "A synthetic option remains open.", "evidence": evidence]
-                    if category == "topic" {
+                    var item: [String: Any] = ["text": "A synthetic option remains open.", "evidence": evidence]
+                    if category == "topics" {
                         item["title"] = "Synthetic context"
                         item["sectionID"] = try XCTUnwrap(template.contextSections.first?.id)
                     }
-                    XCTAssertThrowsError(try LocalSummaryService.convert(try generated([
-                        "summary": "Synthetic context remains open.", "items": [item]
-                    ]), part: 1, evidenceScope: scope), "\(template.rawValue) \(category) evidence: \(evidence)")
+                    var payload = body()
+                    payload[category] = [item]
+                    XCTAssertThrowsError(try LocalSummaryService.convert(try generated(payload), part: 1, evidenceScope: scope),
+                        "\(template.rawValue).\(category): \(evidence)")
                 }
             }
         }
@@ -141,7 +131,7 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         let originals = [source(id: "first-original", text: "First option remains open."), source(id: "second-original", text: "Second option remains open.")]
         let first = try LocalSummaryService.evidenceScope(sources: [originals[0]])
         let second = try LocalSummaryService.evidenceScope(sources: [originals[1]])
-        let response = try generated(["summary": "An option remains open.", "items": [["category": "question", "text": "Which option?", "evidence": ["s1"]]]])
+        let response = try generated(body(questions: [["text": "Which option?", "evidence": ["s1"]]]))
         let firstNotes = try LocalSummaryService.convert(response, part: 1, evidenceScope: first)
         let secondNotes = try LocalSummaryService.convert(response, part: 2, evidenceScope: second)
         XCTAssertEqual(firstNotes.questions.first?.evidence, ["first-original"])
@@ -150,9 +140,8 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         XCTAssertThrowsError(try LocalSummaryService.validate(notes: firstNotes, meeting: meeting, allowedEvidence: ["second-original"]))
         XCTAssertThrowsError(try LocalSummaryService.validate(notes: secondNotes, meeting: meeting, allowedEvidence: ["first-original"]))
         for forbidden in ["second-original", "s2"] {
-            XCTAssertThrowsError(try LocalSummaryService.convert(try generated([
-                "summary": "An option remains open.", "items": [["category": "question", "text": "Which option?", "evidence": [forbidden]]]
-            ]), part: 1, evidenceScope: first))
+            XCTAssertThrowsError(try LocalSummaryService.convert(try generated(body(
+                questions: [["text": "Which option?", "evidence": [forbidden]]])), part: 1, evidenceScope: first))
         }
     }
 
@@ -177,10 +166,9 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
             XCTAssertEqual(scope.originalIDsByAlias, ["s1": originalID])
         }
         let firstScope = try LocalSummaryService.evidenceScope(sources: chunks[0])
-        let unsupportedAction = try LocalSummaryService.convert(try generated([
-            "summary": "A design revision remains open.",
-            "items": [["category": "action", "text": "Revise the design.", "owner": "Ali", "due": "next Friday", "evidence": ["s1"]]]
-        ]), part: 1, evidenceScope: firstScope)
+        let unsupportedAction = try LocalSummaryService.convert(try generated(body(actions: [[
+            "text": "Revise the design.", "owner": "Ali", "due": "next Friday", "evidence": ["s1"]
+        ]])), part: 1, evidenceScope: firstScope)
         XCTAssertThrowsError(try LocalSummaryService.validate(notes: unsupportedAction, meeting: meeting,
             allowedEvidence: [originalID], scopedText: [originalID: chunks[0].map(\.text).joined()], requireTemplateSections: true),
             "A repeated original ID cannot import owner/date details from its later fragment")
@@ -195,24 +183,38 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         let scope = try LocalSummaryService.evidenceScope(sources: originals)
         let meeting = meeting(template: .general, sources: originals)
         let invalidActions: [[String: Any]] = [
-            ["category": "action", "text": "Revise the design.", "owner": "Ali", "evidence": ["s1"]],
-            ["category": "action", "text": "Revise the design.", "due": "next Friday", "evidence": ["s1"]],
-            ["category": "action", "text": "Revise the design.", "owner": "Ayşe", "evidence": ["s2"]],
-            ["category": "action", "text": "Revise the design.", "due": "2026-10-16", "evidence": ["s2"]]
+            ["text": "Revise the design.", "owner": "Ali", "evidence": ["s1"]],
+            ["text": "Revise the design.", "due": "next Friday", "evidence": ["s1"]],
+            ["text": "Revise the design.", "owner": "Ayşe", "evidence": ["s2"]],
+            ["text": "Revise the design.", "due": "2026-10-16", "evidence": ["s2"]]
         ]
         for action in invalidActions {
-            let notes = try LocalSummaryService.convert(try generated([
-                "summary": "The design needs revision.", "items": [action]
-            ]), part: 1, evidenceScope: scope)
+            let notes = try LocalSummaryService.convert(try generated(body(actions: [action])), part: 1, evidenceScope: scope)
             XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes, meeting: meeting,
                 allowedEvidence: Set(originals.map(\.id)), requireTemplateSections: true))
         }
-        let grounded = try LocalSummaryService.convert(try generated([
-            "summary": "A design revision was assigned.",
-            "items": [["category": "action", "text": "Revise the design.", "owner": "Ali", "due": "next Friday", "evidence": ["s2"]]]
-        ]), part: 1, evidenceScope: scope)
+        let grounded = try LocalSummaryService.convert(try generated(body(actions: [[
+            "text": "Revise the design.", "owner": "Ali", "due": "next Friday", "evidence": ["s2"]
+        ]])), part: 1, evidenceScope: scope)
         XCTAssertNoThrow(try LocalSummaryService.validate(notes: grounded, meeting: meeting,
             allowedEvidence: Set(originals.map(\.id)), requireTemplateSections: true))
+    }
+
+    func testOwnerlessDatelessActionPreservesOriginalEvidenceAndIsValidForEveryTemplate() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        let originals = [source(id: "committed-ownerless-task", text: "Ekip bu hatanın düzeltilmesini kararlaştırdı; sorumlu ve tarih belirlenmedi.")]
+        let scope = try LocalSummaryService.evidenceScope(sources: originals)
+        for template in MeetingTemplate.allCases {
+            let notes = try LocalSummaryService.convert(try generated(body(actions: [[
+                "text": "Hatayı düzelt.", "evidence": ["s1"]
+            ]])), part: 1, evidenceScope: scope)
+            XCTAssertEqual(notes.actions.count, 1)
+            XCTAssertNil(notes.actions[0].owner)
+            XCTAssertNil(notes.actions[0].due)
+            XCTAssertEqual(notes.actions[0].evidence, ["committed-ownerless-task"])
+            XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes,
+                meeting: meeting(template: template, sources: originals), requireTemplateSections: true))
+        }
     }
 
     func testCombiningAliasedChunkResponsesPreservesOriginalEvidenceAndSectionIdentity() throws {
@@ -226,12 +228,10 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         var parts: [MeetingNotes] = []
         for (index, chunk) in chunks.enumerated() {
             let scope = try LocalSummaryService.evidenceScope(sources: chunk)
-            let section = index == 0 ? "progress" : "blockers"
-            let notes = try LocalSummaryService.convert(try generated([
-                "summary": "Synthetic section \(index + 1) remains open.",
-                "items": [["category": "topic", "title": "Synthetic section \(index + 1)", "text": chunk[0].text,
-                           "sectionID": section, "evidence": ["s1"]]]
-            ]), part: index + 1, evidenceScope: scope)
+            let notes = try LocalSummaryService.convert(try generated(body(topics: [[
+                "title": "Synthetic section \(index + 1)", "text": chunk[0].text,
+                "sectionID": index == 0 ? "progress" : "blockers", "evidence": ["s1"]
+            ]])), part: index + 1, evidenceScope: scope)
             XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes, meeting: meeting,
                 allowedEvidence: ["original-shared"], scopedText: ["original-shared": chunk[0].text], requireTemplateSections: true))
             parts.append(notes)
@@ -260,15 +260,19 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         return meeting
     }
 
+    private func body(summary: String = "A synthetic discussion with supported notes.", actions: [[String: Any]] = [],
+                      decisions: [[String: Any]] = [], questions: [[String: Any]] = [],
+                      ideas: [[String: Any]] = [], topics: [[String: Any]] = []) -> [String: Any] {
+        ["summary": summary, "actions": actions, "decisions": decisions, "questions": questions, "ideas": ideas, "topics": topics]
+    }
+
     private func payload(template: MeetingTemplate, evidence: [String]) throws -> [String: Any] {
-        let section = try XCTUnwrap(template.contextSections.first?.id)
-        return ["summary": "A design revision was discussed; alternatives remain open.", "items": [
-            ["category": "decision", "text": "Retain the approved design.", "evidence": evidence],
-            ["category": "action", "text": "Revise the design.", "owner": "Ali", "due": "next Friday", "evidence": evidence],
-            ["category": "question", "text": "Which alternative?", "evidence": evidence],
-            ["category": "idea", "text": "Consider an alternative.", "evidence": evidence],
-            ["category": "topic", "title": "Synthetic context", "text": "A design revision was discussed.", "sectionID": section, "evidence": evidence]
-        ]]
+        body(actions: [["text": "Revise the design.", "owner": "Ali", "due": "next Friday", "evidence": evidence]],
+             decisions: [["text": "Retain the approved design.", "evidence": evidence]],
+             questions: [["text": "Which alternative?", "evidence": evidence]],
+             ideas: [["text": "Consider an alternative.", "evidence": evidence]],
+             topics: [["title": "Synthetic context", "text": "A design revision was discussed.",
+                       "sectionID": try XCTUnwrap(template.contextSections.first?.id), "evidence": evidence]])
     }
 
     @available(macOS 26.0, *)

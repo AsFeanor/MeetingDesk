@@ -1,10 +1,11 @@
-## Toplantı 0.5.3
+## Toplantı 0.5.4
 
-Yerel özetin başka konuşma bölümüne ait bir kaynak bağlantısı nedeniyle durması düzeltildi.
+Yerel özette aksiyonların tartışma konuları arasında kaybolup boş kalması düzeltildi.
 
-- Model, her bölümde kaynak bağlantılarını yalnız o bölümün konuşmalarından seçer. Uzun kayıt kimliklerini yeniden yazmak yerine kısa, doğrulanan kaynak etiketleri kullanılır; kaydedilen notlar asıl transkript bağlantılarını korur.
-- Uzun toplantılar hazırlanırken her bölümün kaynakları ve çıktı biçimi birlikte hesaba katılır. Transkript metni atlanmaz.
-- Genel, ekip, ürün ve müşteri şablonları korunur. Kaynakta bulunmayan sorumlu ve tarihler, geçersiz bağlantılar ve eksik notlar kaydedilmez.
+- Aksiyonlar, kararlar, sorular, fikirler ve konular artık ayrı listeler halinde çıkarılır. Konu özetleri aksiyonların yerini doldurmaz.
+- Açıkça kabul edilen veya üstlenilen araştırma ve takip işleri aksiyon olarak değerlendirilir. Sorumlu ya da tarih belirtilmeyen işler de alanları boş bırakılarak korunur.
+- Yalnız önerilen, koşula bağlı, iptal edilmiş veya zaten tamamlanmış işler yeni aksiyon olarak eklenmez. Konuşmada olmayan sorumlu ve tarihler uydurulmaz.
+- Her listenin kendi üretim sınırı vardır; tüm yanıtın boyutu yerel modelin alanına göre hesaplanır. Kaynak bağlantıları, toplantı şablonları ve mevcut arşiv biçimi korunur.
 
 Güncellemeden sonra aynı toplantıyı açıp seçtiğiniz şablonla **Özeti yenile** kullanın. Transkripti yeniden oluşturmanız gerekmez. Mevcut transkript ve notlar aynı arşivdedir.
 
