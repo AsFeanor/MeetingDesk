@@ -305,8 +305,8 @@ final class NotesRevisionPolicyTests: XCTestCase {
             let prompt = LocalSummaryService.instructions(language: "Turkish", template: template)
             XCTAssertTrue(prompt.contains("Meeting template: \(template.rawValue)"))
             let actionPrompt = LocalSummaryService.actionInstructions(language: "Turkish")
-            XCTAssertTrue(actionPrompt.contains("Never substitute an absence label or infer a name or deadline"))
-            XCTAssertTrue(actionPrompt.contains("without changing its spelling or converting it to a date"))
+            XCTAssertTrue(actionPrompt.contains("responsiblePersonName"))
+            XCTAssertTrue(actionPrompt.contains("Never infer or convert a date"))
             XCTAssertTrue(prompt.lowercased().contains("untrusted"))
         }
     }

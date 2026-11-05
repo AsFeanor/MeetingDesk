@@ -114,8 +114,8 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
                 for evidence in invalid {
                     var item: [String: Any] = ["text": "A synthetic option remains open.", "evidence": evidence]
                     if category == "actions" {
-                        item["owner"] = ""
-                        item["due"] = ""
+                        item["responsiblePersonName"] = ""
+                        item["deadlinePhrase"] = ""
                     }
                     if category == "topics" {
                         item["title"] = "Synthetic context"
@@ -171,7 +171,7 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         }
         let firstScope = try LocalSummaryService.evidenceScope(sources: chunks[0])
         let unsupportedAction = try LocalSummaryService.convert(try generated(body(actions: [[
-            "text": "Revise the design.", "owner": "Ali", "due": "next Friday", "evidence": ["s1"]
+            "text": "Revise the design.", "responsiblePersonName": "Ali", "deadlinePhrase": "next Friday", "evidence": ["s1"]
         ]])), part: 1, evidenceScope: firstScope)
         XCTAssertThrowsError(try LocalSummaryService.validate(notes: unsupportedAction, meeting: meeting,
             allowedEvidence: [originalID], scopedText: [originalID: chunks[0].map(\.text).joined()], requireTemplateSections: true),
@@ -187,10 +187,10 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         let scope = try LocalSummaryService.evidenceScope(sources: originals)
         let meeting = meeting(template: .general, sources: originals)
         let invalidActions: [[String: Any]] = [
-            ["text": "Revise the design.", "owner": "Ali", "due": "", "evidence": ["s1"]],
-            ["text": "Revise the design.", "owner": "", "due": "next Friday", "evidence": ["s1"]],
-            ["text": "Revise the design.", "owner": "Ayşe", "due": "", "evidence": ["s2"]],
-            ["text": "Revise the design.", "owner": "", "due": "2026-10-16", "evidence": ["s2"]]
+            ["text": "Revise the design.", "responsiblePersonName": "Ali", "deadlinePhrase": "", "evidence": ["s1"]],
+            ["text": "Revise the design.", "responsiblePersonName": "", "deadlinePhrase": "next Friday", "evidence": ["s1"]],
+            ["text": "Revise the design.", "responsiblePersonName": "Ayşe", "deadlinePhrase": "", "evidence": ["s2"]],
+            ["text": "Revise the design.", "responsiblePersonName": "", "deadlinePhrase": "2026-10-16", "evidence": ["s2"]]
         ]
         for action in invalidActions {
             let notes = try LocalSummaryService.convert(try generated(body(actions: [action])), part: 1, evidenceScope: scope)
@@ -198,7 +198,7 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
                 allowedEvidence: Set(originals.map(\.id)), requireTemplateSections: true))
         }
         let grounded = try LocalSummaryService.convert(try generated(body(actions: [[
-            "text": "Revise the design.", "owner": "Ali", "due": "next Friday", "evidence": ["s2"]
+            "text": "Revise the design.", "responsiblePersonName": "Ali", "deadlinePhrase": "next Friday", "evidence": ["s2"]
         ]])), part: 1, evidenceScope: scope)
         XCTAssertNoThrow(try LocalSummaryService.validate(notes: grounded, meeting: meeting,
             allowedEvidence: Set(originals.map(\.id)), requireTemplateSections: true))
@@ -210,7 +210,7 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         let scope = try LocalSummaryService.evidenceScope(sources: originals)
         for template in MeetingTemplate.allCases {
             let notes = try LocalSummaryService.convert(try generated(body(actions: [[
-                "text": "Hatayı düzelt.", "owner": "", "due": "", "evidence": ["s1"]
+                "text": "Hatayı düzelt.", "responsiblePersonName": "", "deadlinePhrase": "", "evidence": ["s1"]
             ]])), part: 1, evidenceScope: scope)
             XCTAssertEqual(notes.actions.count, 1)
             XCTAssertNil(notes.actions[0].owner)
@@ -252,6 +252,94 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         XCTAssertNoThrow(try LocalSummaryService.validate(notes: combined, meeting: meeting, requireTemplateSections: true))
     }
 
+    func testSourceJSONSeparatesRawSpeakerLabelsFromOnlyProvidedIdentityWithoutChangingData() throws {
+        var meeting = Meeting(title: "Synthetic source metadata", segments: [
+            .init(id: "original-first", speaker: "A", start: 0.5, end: 4.75, text: "A report was discussed."),
+            .init(id: "original-second", speaker: "B", start: 5.25, end: 9.5, text: "A task remains open.")
+        ])
+        meeting.speakerNames = ["A": "Ayşe"]
+        let chunks = try LocalSummaryService.sourceChunks(meeting: meeting)
+        let sources = chunks.flatMap { $0 }
+        XCTAssertEqual(sources.map(\.id), meeting.segments.map(\.id))
+        XCTAssertEqual(sources.map(\.speaker), ["A", "B"], "A supplied name must not overwrite the raw source label")
+        XCTAssertEqual(sources.map(\.providedSpeakerName), ["Ayşe", nil])
+        let objects = try sourceObjects(sources)
+        for (index, object) in objects.enumerated() {
+            let original = meeting.segments[index]
+            XCTAssertEqual(object["id"] as? String, original.id)
+            XCTAssertEqual(object["speakerLabel"] as? String, original.speaker)
+            XCTAssertEqual(object["start"] as? Double, original.start)
+            XCTAssertEqual(object["end"] as? Double, original.end)
+            XCTAssertEqual(object["text"] as? String, original.text)
+            XCTAssertNil(object["speaker"], "The ambiguous input key must not invite copying a channel label into a person field")
+            XCTAssertNil(object["responsiblePersonName"])
+            XCTAssertNil(object["deadlinePhrase"])
+        }
+        XCTAssertEqual(objects[0]["providedSpeakerName"] as? String, "Ayşe")
+        XCTAssertNil(objects[1]["providedSpeakerName"], "No user mapping means no identity metadata, including no null placeholder")
+
+        let scope = try LocalSummaryService.evidenceScope(sources: sources)
+        XCTAssertEqual(scope.originalIDsByAlias, ["s1": "original-first", "s2": "original-second"])
+        XCTAssertEqual(scope.sources.map(\.speaker), sources.map(\.speaker))
+        XCTAssertEqual(scope.sources.map(\.providedSpeakerName), sources.map(\.providedSpeakerName))
+        let scopedObjects = try sourceObjects(scope.sources)
+        for (index, object) in scopedObjects.enumerated() {
+            XCTAssertEqual(object["id"] as? String, "s\(index + 1)")
+            for field in ["speakerLabel", "providedSpeakerName", "start", "end", "text"] {
+                let actual = object[field] as? NSObject
+                let original = objects[index][field] as? NSObject
+                XCTAssertEqual(actual, original, "Aliasing must change only the source ID")
+            }
+        }
+    }
+
+    func testNameLookingOrAnonymousSpeakerLabelsDoNotBecomeProvidedNamesWithoutMapping() throws {
+        let labels = ["A", "Ayşe", "Mikrofon"]
+        let meeting = Meeting(title: "Synthetic unmapped source labels", segments: labels.enumerated().map { index, label in
+            .init(id: "unmapped-\(index)", speaker: label, start: Double(index * 5), end: Double(index * 5 + 5),
+                  text: "The discussion contains no explicitly named responsible person.")
+        })
+        XCTAssertTrue(meeting.speakerNames.isEmpty)
+        let sources = try LocalSummaryService.sourceChunks(meeting: meeting).flatMap { $0 }
+        XCTAssertEqual(sources.map(\.speaker), labels)
+        XCTAssertTrue(sources.allSatisfy { $0.providedSpeakerName == nil })
+        for object in try sourceObjects(sources) {
+            XCTAssertNil(object["providedSpeakerName"], "A label that resembles a name is still not a user-supplied identity")
+            XCTAssertNil(object["speaker"])
+        }
+    }
+
+    func testSplitSourcesAndAliasScopesPreserveProvidedNameRawLabelAndCompleteText() throws {
+        let text = String(repeating: "A revision was discussed; assignment remains open. 👩🏽‍💻\n", count: 80)
+        var meeting = Meeting(title: "Synthetic mapped fragmented source", segments: [
+            .init(id: "mapped-original", speaker: "A", start: 1.25, end: 90.75, text: text)
+        ])
+        meeting.speakerNames = ["A": "Deniz"]
+        let chunks = try LocalSummaryService.sourceChunks(meeting: meeting, maximumBytes: 1_024)
+        XCTAssertGreaterThan(chunks.count, 1)
+        XCTAssertEqual(chunks.flatMap { $0 }.map(\.text).joined(), text)
+        for chunk in chunks {
+            let scope = try LocalSummaryService.evidenceScope(sources: chunk)
+            XCTAssertEqual(scope.evidenceIDs, ["s1"])
+            XCTAssertEqual(scope.originalIDsByAlias, ["s1": "mapped-original"])
+            for source in scope.sources {
+                XCTAssertEqual(source.speaker, "A")
+                XCTAssertEqual(source.providedSpeakerName, "Deniz")
+                XCTAssertEqual(source.start, 1.25)
+                XCTAssertEqual(source.end, 90.75)
+            }
+            for object in try sourceObjects(scope.sources) {
+                XCTAssertEqual(object["speakerLabel"] as? String, "A")
+                XCTAssertEqual(object["providedSpeakerName"] as? String, "Deniz")
+                XCTAssertNil(object["speaker"])
+            }
+        }
+    }
+
+    private func sourceObjects(_ sources: [LocalSummaryService.Source]) throws -> [[String: Any]] {
+        try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(sources)) as? [[String: Any]])
+    }
+
     private func source(id: String, speaker: String = "A", start: Double = 0, end: Double = 5, text: String) -> LocalSummaryService.Source {
         .init(id: id, speaker: speaker, start: start, end: end, text: text)
     }
@@ -271,7 +359,7 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
     }
 
     private func payload(template: MeetingTemplate, evidence: [String]) throws -> [String: Any] {
-        body(actions: [["text": "Revise the design.", "owner": "Ali", "due": "next Friday", "evidence": evidence]],
+        body(actions: [["text": "Revise the design.", "responsiblePersonName": "Ali", "deadlinePhrase": "next Friday", "evidence": evidence]],
              decisions: [["text": "Retain the approved design.", "evidence": evidence]],
              questions: [["text": "Which alternative?", "evidence": evidence]],
              ideas: [["text": "Consider an alternative.", "evidence": evidence]],
