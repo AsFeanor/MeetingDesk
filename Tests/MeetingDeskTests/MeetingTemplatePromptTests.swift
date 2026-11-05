@@ -11,7 +11,8 @@ final class MeetingTemplatePromptTests: XCTestCase {
                 XCTAssertTrue(instructions.contains("\(section.id):"))
             }
             XCTAssertTrue(instructions.contains("UNTRUSTED"))
-            XCTAssertTrue(instructions.contains("Always return owner and due for each action"))
+            XCTAssertTrue(instructions.contains("Always return owner and due as strings for each action"))
+            XCTAssertTrue(instructions.contains("For an absent value return exactly \"\", an empty string."))
             XCTAssertTrue(instructions.contains("An investigation is an idea when merely proposed, but an action when someone clearly commits"))
             XCTAssertTrue(instructions.contains("Capture a supported action even when no owner or due date is stated"))
         }

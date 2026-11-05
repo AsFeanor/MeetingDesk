@@ -113,6 +113,10 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
             for category in categories {
                 for evidence in invalid {
                     var item: [String: Any] = ["text": "A synthetic option remains open.", "evidence": evidence]
+                    if category == "actions" {
+                        item["owner"] = ""
+                        item["due"] = ""
+                    }
                     if category == "topics" {
                         item["title"] = "Synthetic context"
                         item["sectionID"] = try XCTUnwrap(template.contextSections.first?.id)
@@ -183,10 +187,10 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         let scope = try LocalSummaryService.evidenceScope(sources: originals)
         let meeting = meeting(template: .general, sources: originals)
         let invalidActions: [[String: Any]] = [
-            ["text": "Revise the design.", "owner": "Ali", "evidence": ["s1"]],
-            ["text": "Revise the design.", "due": "next Friday", "evidence": ["s1"]],
-            ["text": "Revise the design.", "owner": "Ayşe", "evidence": ["s2"]],
-            ["text": "Revise the design.", "due": "2026-10-16", "evidence": ["s2"]]
+            ["text": "Revise the design.", "owner": "Ali", "due": "", "evidence": ["s1"]],
+            ["text": "Revise the design.", "owner": "", "due": "next Friday", "evidence": ["s1"]],
+            ["text": "Revise the design.", "owner": "Ayşe", "due": "", "evidence": ["s2"]],
+            ["text": "Revise the design.", "owner": "", "due": "2026-10-16", "evidence": ["s2"]]
         ]
         for action in invalidActions {
             let notes = try LocalSummaryService.convert(try generated(body(actions: [action])), part: 1, evidenceScope: scope)
@@ -206,7 +210,7 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         let scope = try LocalSummaryService.evidenceScope(sources: originals)
         for template in MeetingTemplate.allCases {
             let notes = try LocalSummaryService.convert(try generated(body(actions: [[
-                "text": "Hatayı düzelt.", "evidence": ["s1"]
+                "text": "Hatayı düzelt.", "owner": "", "due": "", "evidence": ["s1"]
             ]])), part: 1, evidenceScope: scope)
             XCTAssertEqual(notes.actions.count, 1)
             XCTAssertNil(notes.actions[0].owner)

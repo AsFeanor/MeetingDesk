@@ -45,17 +45,13 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
                     XCTAssertNotNil(fields["owner"])
                     XCTAssertNotNil(fields["due"])
                     for metadata in ["owner", "due"] {
-                        let field = try XCTUnwrap(fields[metadata] as? [String: Any])
-                        let nullable = try permitsNull(field, in: schema)
-                        if #available(macOS 26.4, *) {
-                            XCTAssertTrue(required.contains(metadata),
-                                          "Guided generation must consider \(metadata) instead of silently omitting it")
-                            XCTAssertTrue(nullable,
-                                          "An unknown \(metadata) must be represented by null rather than invented")
-                        } else {
-                            XCTAssertFalse(required.contains(metadata),
-                                           "The older SDK fallback must allow an unknown \(metadata) to be omitted")
-                        }
+                        let field = try resolve(try XCTUnwrap(fields[metadata] as? [String: Any]), in: schema)
+                        XCTAssertTrue(required.contains(metadata),
+                                      "Guided generation must consider \(metadata) instead of silently omitting it")
+                        XCTAssertEqual(field["type"] as? String, "string",
+                                       "Action metadata uses a required string with an exact empty-string absence marker")
+                        XCTAssertFalse(try permitsNull(field, in: schema),
+                                       "The generated wire format must not offer a nullable alternative")
                     }
                 } else {
                     XCTAssertNil(fields["owner"])
@@ -203,17 +199,69 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
             let grounded = try LocalSummaryService.convert(try generated(body), part: 1)
             XCTAssertThrowsError(try LocalSummaryService.validate(notes: grounded, meeting: meeting,
                 scopedText: ["s1": "The design needs revision."], requireTemplateSections: true))
-            for omitOptionalFields in [false, true] {
-                var unassignedBody = body
-                var actions = try XCTUnwrap(unassignedBody["actions"] as? [[String: Any]])
-                actions[0]["owner"] = omitOptionalFields ? nil : NSNull()
-                actions[0]["due"] = omitOptionalFields ? nil : NSNull()
-                unassignedBody["actions"] = actions
-                let unassigned = try LocalSummaryService.convert(try generated(unassignedBody), part: 1)
-                XCTAssertEqual(unassigned.actions.count, 1)
-                XCTAssertNil(unassigned.actions[0].owner)
-                XCTAssertNil(unassigned.actions[0].due)
-                XCTAssertNoThrow(try LocalSummaryService.validate(notes: unassigned, meeting: meeting, requireTemplateSections: true))
+            var unassignedBody = body
+            var actions = try XCTUnwrap(unassignedBody["actions"] as? [[String: Any]])
+            actions[0]["owner"] = ""
+            actions[0]["due"] = ""
+            unassignedBody["actions"] = actions
+            let unassigned = try LocalSummaryService.convert(try generated(unassignedBody), part: 1)
+            XCTAssertEqual(unassigned.actions.count, 1)
+            XCTAssertNil(unassigned.actions[0].owner)
+            XCTAssertNil(unassigned.actions[0].due)
+            XCTAssertNoThrow(try LocalSummaryService.validate(notes: unassigned, meeting: meeting, requireTemplateSections: true))
+        }
+    }
+
+    func testMissingNullOrWrongTypedActionMetadataCannotDecodeAsCompleteNotes() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        let malformedValues: [Any?] = [nil, NSNull(), 42, true, [] as [String], ["unexpected": "value"]]
+        for template in MeetingTemplate.allCases {
+            let meeting = meeting(for: template)
+            let sources = try LocalSummaryService.sourceChunks(meeting: meeting)
+            let scope = try LocalSummaryService.evidenceScope(sources: try XCTUnwrap(sources.first))
+            for field in ["owner", "due"] {
+                for invalid in malformedValues {
+                    var body = payload(for: template)
+                    var actions = try XCTUnwrap(body["actions"] as? [[String: Any]])
+                    // Start from an explicit complete valid action, then remove
+                    // or corrupt only the field under test. No helper fills it.
+                    actions[0][field] = invalid
+                    body["actions"] = actions
+                    let generated = try generated(body)
+                    XCTAssertThrowsError(try LocalSummaryService.convert(generated, part: 1), field)
+                    XCTAssertThrowsError(try LocalSummaryService.convert(generated, part: 1, evidenceScope: scope), field)
+                }
+            }
+        }
+    }
+
+    func testOnlyExactEmptyActionMetadataBecomesNilAndOtherStringsStillRequireGrounding() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        for template in MeetingTemplate.allCases {
+            var meeting = meeting(for: template)
+            meeting.segments[0].text = "The team agreed to revise the design; no responsible person or deadline was stated."
+            var body = emptyBody()
+            let unknown: [String: Any] = ["text": "Revise the design.", "owner": "", "due": "", "evidence": ["s1"]]
+            body["actions"] = [unknown]
+            let unassigned = try LocalSummaryService.convert(try generated(body), part: 11)
+            XCTAssertEqual(unassigned.actions.count, 1)
+            XCTAssertNil(unassigned.actions[0].owner)
+            XCTAssertNil(unassigned.actions[0].due)
+            XCTAssertNoThrow(try LocalSummaryService.validate(notes: unassigned, meeting: meeting,
+                allowedEvidence: ["s1"], requireTemplateSections: true))
+
+            for metadata in ["owner", "due"] {
+                for unsupported in [" ", "\t", "\n", "null", "None", "Belirtilmedi", "nil", "N/A", "2026-10-16"] {
+                    var invalid = body
+                    var action = unknown
+                    action[metadata] = unsupported
+                    invalid["actions"] = [action]
+                    let notes = try LocalSummaryService.convert(try generated(invalid), part: 11)
+                    XCTAssertEqual(metadata == "owner" ? notes.actions[0].owner : notes.actions[0].due, unsupported,
+                                   "Only the exact empty string may become nil; a bogus \(metadata) must remain visible to validation")
+                    XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes, meeting: meeting,
+                        allowedEvidence: ["s1"], requireTemplateSections: true), "\(metadata): \(unsupported)")
+                }
             }
         }
     }
@@ -250,7 +298,7 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
     func testTopicInventoryCannotDisplaceActionsAndUnrelatedTopicEditsDoNotChangeActionIDs() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         var body = payload(for: .general)
-        let action: [String: Any] = ["text": "Revise the design.", "evidence": ["s1"]]
+        let action: [String: Any] = ["text": "Revise the design.", "owner": "", "due": "", "evidence": ["s1"]]
         body["actions"] = [action, action, action]
         let topic: [String: Any] = ["title": "Context", "text": "The design was discussed.",
                                    "sectionID": try XCTUnwrap(MeetingTemplate.general.contextSections.first?.id), "evidence": ["s1"]]
