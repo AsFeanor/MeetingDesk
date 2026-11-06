@@ -111,7 +111,7 @@ final class LocalActionAssessmentTests: XCTestCase {
         let misplaced: [String: Any] = ["taskClause": "Ali will revise the design by next Friday.", "evidence": ["s1", "s2"]]
         XCTAssertThrowsError(try LocalSummaryService.convertActionCandidates(try generated(["s1": [misplaced], "s2": []]), part: 1, evidenceScope: scope),
                             "Additional evidence does not change the source that must contain the literal clause")
-        for changed in ["The DESIGN needs revision.", "The design needs revisions.", "Revise the design.", "The design needs revision. "] {
+        for changed in ["The design needs revisions.", "Revise the design.", "The design needs revision. "] {
             let item: [String: Any] = ["taskClause": changed, "evidence": ["s1"]]
             XCTAssertThrowsError(try LocalSummaryService.convertActionCandidates(try generated(["s1": [item], "s2": []]), part: 1, evidenceScope: scope), changed)
         }

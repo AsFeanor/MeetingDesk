@@ -518,6 +518,56 @@ struct LocalSummaryService {
         }
     }
 
+    /// Preserve exact matches. A case-only mismatch may resolve only to one
+    /// original Character-boundary span under the owning source alias.
+    /// The default Foundation comparator matches the observed diagnostic;
+    /// no locale inference, diacritic/width folding or punctuation edits apply.
+    static func canonicalSourceTaskClause(_ clause: String, owningAlias: String,
+                                           evidenceScope: EvidenceScope) throws -> String {
+        let failure = "Yerel aksiyonun görev alıntısı kaynakta tek bir kesin konumla eşleşmedi. Notlar kaydedilmedi; transkript korunuyor."
+        guard !clause.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              evidenceScope.evidenceIDs.contains(owningAlias) else { throw MeetingError.message(failure) }
+        let sourceBytes = evidenceScope.sources.reduce(into: Data()) { data, source in
+            if source.id == owningAlias { data.append(contentsOf: source.text.utf8) }
+        }
+        // Exact byte matches retain the previous behavior, even when repeated.
+        if sourceBytes.range(of: Data(clause.utf8)) != nil { return clause }
+        let source = String(decoding: sourceBytes, as: UTF8.self)
+        let boundaries = Set(source.indices).union([source.endIndex])
+        var uniqueMatch: Range<String.Index>?
+        // Anchoring at every Character boundary also finds overlapping matches.
+        for start in source.indices {
+            guard let range = source.range(of: clause, options: [.anchored, .caseInsensitive, .literal],
+                                           range: start..<source.endIndex, locale: nil),
+                  range.lowerBound == start, boundaries.contains(range.upperBound),
+                  differsOnlyByDirectDefaultCase(String(source[range]), clause) else { continue }
+            guard uniqueMatch == nil else { throw MeetingError.message(failure) }
+            uniqueMatch = range
+        }
+        guard let range = uniqueMatch else { throw MeetingError.message(failure) }
+        // Return source text itself; never save the generated casing.
+        return String(source[range])
+    }
+
+    private static func differsOnlyByDirectDefaultCase(_ source: String, _ clause: String) -> Bool {
+        let original = Array(source), generated = Array(clause)
+        guard original.count == generated.count else { return false }
+        var changed = false
+        for (left, right) in zip(original, generated) {
+            let a = String(left), b = String(right)
+            if a.utf8.elementsEqual(b.utf8) { continue }
+            // Direct, one-Character mappings reject full-fold expansions such
+            // as ß/SS, alternate punctuation and normalization-only rewrites.
+            let direct = a.uppercased().utf8.elementsEqual(b.utf8)
+                || a.lowercased().utf8.elementsEqual(b.utf8)
+                || b.uppercased().utf8.elementsEqual(a.utf8)
+                || b.lowercased().utf8.elementsEqual(a.utf8)
+            guard direct else { return false }
+            changed = true
+        }
+        return changed
+    }
+
     @available(macOS 26.0, *)
     static func convertActionCandidates(_ generated: GeneratedContent, part: Int,
                                         evidenceScope: EvidenceScope) throws -> [ActionCandidate] {
@@ -535,19 +585,13 @@ struct LocalSummaryService {
             guard let items = wire.candidatesBySource[owningAlias], candidates.count + items.count <= 12 else {
                 throw MeetingError.message("Yerel model çok fazla aksiyon adayı döndürdü. Eksik notlar kaydedilmedi; transkript korunuyor.")
             }
-            // Match the same scoped concatenation used by final grounding:
-            // only this alias's fragments, in source order, with no separators.
-            let owningSourceBytes = evidenceScope.sources.reduce(into: Data()) { data, source in
-                if source.id == owningAlias { data.append(contentsOf: source.text.utf8) }
-            }
             for item in items {
-                let clauseBytes = Data(item.taskClause.utf8)
                 guard !item.taskClause.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      item.evidence.contains(owningAlias),
-                      owningSourceBytes.range(of: clauseBytes) != nil else {
+                      item.evidence.contains(owningAlias) else {
                     throw MeetingError.message("Yerel aksiyonun görev alıntısı veya kaynak bağlantısı doğrulanamadı. Notlar kaydedilmedi; transkript korunuyor.")
                 }
-                candidates.append(ActionCandidate(id: "local-\(part)-action-\(candidates.count + 1)", text: item.taskClause,
+                let sourceClause = try canonicalSourceTaskClause(item.taskClause, owningAlias: owningAlias, evidenceScope: evidenceScope)
+                candidates.append(ActionCandidate(id: "local-\(part)-action-\(candidates.count + 1)", text: sourceClause,
                     evidence: try resolvedEvidence(item.evidence, scope: evidenceScope)))
             }
         }
