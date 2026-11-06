@@ -105,7 +105,7 @@ struct LocalSummaryService {
                 let actionSession = LanguageModelSession(model: model, instructions: actionInstructions)
                 let actionSchema = try Self.actionInventorySchema(evidenceIDs: scope.evidenceIDs)
                 let actionResponse = try await actionSession.respond(to: prompt, schema: actionSchema,
-                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 1_000))
+                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 1_000))
                 try Task.checkCancellation()
                 let candidates = try Self.convertActionCandidates(actionResponse.content, part: index + 1, evidenceScope: scope)
                 var actions: [ActionItem] = []
@@ -523,7 +523,7 @@ struct LocalSummaryService {
         }
         let commitmentSession = LanguageModelSession(model: model, instructions: commitmentInstructions)
         let commitmentResponse = try await commitmentSession.respond(to: commitmentPrompt, schema: commitmentSchema,
-            options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 128))
+            options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 128))
         try Task.checkCancellation()
         guard try commitmentAllowsAction(commitmentResponse.content) else { return nil }
         try Task.checkCancellation()
@@ -547,7 +547,7 @@ struct LocalSummaryService {
         }
         let metadataSession = LanguageModelSession(model: model, instructions: metadataInstructions)
         let metadataResponse = try await metadataSession.respond(to: metadataPrompt, schema: metadataSchema,
-            options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 512))
+            options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 512))
         try Task.checkCancellation()
         return try actionFromMetadata(metadataResponse.content, candidate: candidate)
     }
