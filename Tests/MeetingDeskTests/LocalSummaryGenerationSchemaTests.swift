@@ -477,18 +477,18 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
         }
     }
 
-    func testTaskStatusSchemaRequiresEveryCandidateBooleanAndNoOtherKeys() throws {
+    func testTaskStatusSchemaRequiresEveryCandidateClosedStatusAndNoOtherKeys() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let schema = try taskStatusSchemaObject(candidateCount: 3)
         let fields = try XCTUnwrap(schema["properties"] as? [String: Any])
-        let expected: Set<String> = ["candidate1IsPendingTask", "candidate2IsPendingTask", "candidate3IsPendingTask"]
+        let expected: Set<String> = ["candidate1TaskStatus", "candidate2TaskStatus", "candidate3TaskStatus"]
         XCTAssertEqual(Set(fields.keys), expected)
         XCTAssertEqual(Set(try XCTUnwrap(schema["required"] as? [String])), expected)
         XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
         for field in expected {
             let value = try resolve(try XCTUnwrap(fields[field] as? [String: Any]), in: schema)
-            XCTAssertEqual(try finiteBooleanDomain(value, in: schema), [false, true],
-                           "Every verdict must permit both Boolean outcomes, without strings, nulls, or an assumed default")
+            XCTAssertEqual(try finiteStringDomain(value, in: schema), ["pending", "cancelled", "completed", "not_committed"],
+                           "Every status must have the same finite string domain, without Boolean coercion, nulls, or a default")
         }
     }
 
@@ -501,9 +501,9 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
         XCTAssertNoThrow(try LocalSummaryService.taskStatusSchema(candidateCount: 12))
     }
 
-    func testLocalizedTaskStatusSchemasPreserveBooleanContractAndOwnerlessAgreement() throws {
+    func testLocalizedTaskStatusSchemasPreserveClosedStatusContractAndOwnerlessAgreement() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
-        let expected: Set<String> = ["candidate1IsPendingTask", "candidate2IsPendingTask", "candidate3IsPendingTask"]
+        let expected: Set<String> = ["candidate1TaskStatus", "candidate2TaskStatus", "candidate3TaskStatus"]
         for language in ["English", "Turkish"] {
             let schema = try taskStatusSchemaObject(candidateCount: 3, language: language)
             let fields = try XCTUnwrap(schema["properties"] as? [String: Any])
@@ -512,44 +512,50 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
             XCTAssertEqual(schema["additionalProperties"] as? Bool, false, language)
             for field in expected {
                 let value = try resolve(try XCTUnwrap(fields[field] as? [String: Any]), in: schema)
-                XCTAssertEqual(try finiteBooleanDomain(value, in: schema), [false, true], language)
+                XCTAssertEqual(try finiteStringDomain(value, in: schema), ["pending", "cancelled", "completed", "not_committed"], language)
                 let description = try XCTUnwrap(value["description"] as? String)
                 if language == "Turkish" {
-                    XCTAssertTrue(description.contains("kararlaştırılan VEYA açıkça üstlenilen"),
+                    XCTAssertTrue(description.contains("kararlaştırılmış VEYA üstlenilmiş"),
                                   "Agreement must remain sufficient even without a named undertaker")
                     XCTAssertTrue(description.contains("Sorumlu ve tarih şart değildir"))
-                    XCTAssertTrue(description.contains("kaydın sonunda"))
-                    XCTAssertTrue(description.contains("kabul etmek işi bitirmek değildir"))
+                    XCTAssertTrue(description.contains("cancelled: iptal/ret/yapılmayacak"))
+                    XCTAssertTrue(description.contains("completed: bitmiş"))
+                    XCTAssertTrue(description.contains("not_committed: yalnız öneri veya kabul edilmemiş"))
                 } else {
-                    XCTAssertTrue(description.contains("explicitly agreed OR clearly committed"))
-                    XCTAssertTrue(description.contains("with or without an owner or deadline"))
-                    XCTAssertTrue(description.contains("at the end of the supplied text, not today"))
+                    XCTAssertTrue(description.contains("agreed OR committed future work"))
+                    XCTAssertTrue(description.contains("Owner and deadline are not required"))
+                    XCTAssertTrue(description.contains("cancelled: cancelled, rejected or will not happen"))
+                    XCTAssertTrue(description.contains("completed: finished"))
+                    XCTAssertTrue(description.contains("not_committed: merely proposed or unaccepted"))
                 }
             }
         }
     }
 
-    func testTaskStatusSelectionRejectsMissingExtraAndNonBooleanVerdictsWithoutDefaults() throws {
+    func testTaskStatusSelectionRejectsMissingExtraNonStringAndUnknownStatusesWithoutDefaults() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let candidates = statusCandidates()
         let malformed: [[String: Any]] = [
-            [:], ["candidate1IsPendingTask": true], ["candidate2IsPendingTask": true],
-            ["candidate1IsPendingTask": true, "candidate2IsPendingTask": false, "candidate3IsPendingTask": true],
-            ["candidate0IsPendingTask": false, "candidate1IsPendingTask": true, "candidate2IsPendingTask": false],
-            ["Candidate1IsPendingTask": true, "candidate2IsPendingTask": false], ["candidate01IsPendingTask": true, "candidate2IsPendingTask": false],
-            ["a1": true, "a2": false]
+            [:], ["candidate1TaskStatus": "pending"], ["candidate2TaskStatus": "pending"],
+            ["candidate1TaskStatus": "pending", "candidate2TaskStatus": "cancelled", "candidate3TaskStatus": "pending"],
+            ["candidate0TaskStatus": "cancelled", "candidate1TaskStatus": "pending", "candidate2TaskStatus": "cancelled"],
+            ["Candidate1TaskStatus": "pending", "candidate2TaskStatus": "cancelled"], ["candidate01TaskStatus": "pending", "candidate2TaskStatus": "cancelled"],
+            ["a1": true, "a2": false],
+            ["candidate1IsPendingTask": true, "candidate2IsPendingTask": false]
         ]
         for value in malformed {
             XCTAssertThrowsError(try LocalSummaryService.selectPendingActions(try generated(value), candidates: candidates))
         }
-        for invalid in [NSNull(), "true", "false", 0, 1, [] as [Bool], ["value": true]] as [Any] {
-            for field in ["candidate1IsPendingTask", "candidate2IsPendingTask"] {
-                var map: [String: Any] = ["candidate1IsPendingTask": true, "candidate2IsPendingTask": false]
+        for invalid in [NSNull(), true, false, 0, 1, "", "true", "false", "Pending", "PENDING", " pending", "pending ", "unknown",
+                        "bekliyor", "iptal", "not committed", "cancelled.",
+                        [] as [String], ["value": "pending"]] as [Any] {
+            for field in ["candidate1TaskStatus", "candidate2TaskStatus"] {
+                var map: [String: Any] = ["candidate1TaskStatus": "pending", "candidate2TaskStatus": "cancelled"]
                 map[field] = invalid
                 XCTAssertThrowsError(try LocalSummaryService.selectPendingActions(try generated(map), candidates: candidates), field)
             }
         }
-        for json in ["null", "[]", "true", "42", "\"true\""] {
+        for json in ["null", "[]", "true", "42", "\"true\"", "\"pending\""] {
             XCTAssertThrowsError(try LocalSummaryService.selectPendingActions(GeneratedContent(json: json), candidates: candidates))
         }
     }
@@ -558,7 +564,7 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let selected = try LocalSummaryService.selectPendingActions(try generated([:]), candidates: [])
         XCTAssertTrue(selected.isEmpty)
-        XCTAssertThrowsError(try LocalSummaryService.selectPendingActions(try generated(["candidate1IsPendingTask": false]), candidates: []))
+        XCTAssertThrowsError(try LocalSummaryService.selectPendingActions(try generated(["candidate1TaskStatus": "cancelled"]), candidates: []))
     }
 
     func testTaskStatusSelectionPreservesAcceptedCandidateFieldsAndOriginalOrderExactly() throws {
@@ -571,11 +577,14 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
             ActionItem(id: "original-final-id", text: "Update the guide.", owner: nil, due: nil,
                        evidence: ["third-source"])
         ]
-        let selected = try LocalSummaryService.selectPendingActions(try generated(["candidate1IsPendingTask": true, "candidate2IsPendingTask": false, "candidate3IsPendingTask": true]),
-                                                                  candidates: candidates)
-        XCTAssertEqual(selected, [candidates[0], candidates[2]],
-                       "Verification may select candidates, but cannot rename IDs, rewrite text/metadata, reorder evidence, or fabricate values")
-        XCTAssertEqual(selected.map(\.id), ["original-first-id", "original-final-id"])
+        for nonpending in ["cancelled", "completed", "not_committed"] {
+            let selected = try LocalSummaryService.selectPendingActions(try generated([
+                "candidate1TaskStatus": "pending", "candidate2TaskStatus": nonpending, "candidate3TaskStatus": "pending"
+            ]), candidates: candidates)
+            XCTAssertEqual(selected, [candidates[0], candidates[2]],
+                           "Each nonpending status must exclude only its own candidate without rewriting accepted fields")
+            XCTAssertEqual(selected.map(\.id), ["original-first-id", "original-final-id"])
+        }
     }
 
     func testCancelledAndPendingCandidatesSharingEvidenceAreClassifiedIndividually() throws {
@@ -587,7 +596,7 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
                        evidence: ["shared-source"])
         ]
         XCTAssertNoThrow(try LocalSummaryService.validateActionCandidates(candidates, allowedEvidence: ["shared-source"]))
-        let selected = try LocalSummaryService.selectPendingActions(try generated(["candidate1IsPendingTask": false, "candidate2IsPendingTask": true]), candidates: candidates)
+        let selected = try LocalSummaryService.selectPendingActions(try generated(["candidate1TaskStatus": "cancelled", "candidate2TaskStatus": "pending"]), candidates: candidates)
         XCTAssertEqual(selected, [candidates[1]], "Rejecting a cancelled task must not reject another task merely because it shares the source")
         let meeting = Meeting(title: "Synthetic cancellation and follow-up", segments: [
             .init(id: "shared-source", speaker: "A", start: 0, end: 10,
@@ -605,8 +614,8 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
         for metadata in [(owner: "A" as String?, due: nil as String?), (owner: nil as String?, due: "2030-01-01" as String?)] {
             let candidate = ActionItem(id: "accepted", text: "Revise the design.", owner: metadata.owner,
                                        due: metadata.due, evidence: ["s1"])
-            let selected = try LocalSummaryService.selectPendingActions(try generated(["candidate1IsPendingTask": true]), candidates: [candidate])
-            XCTAssertEqual(selected, [candidate], "A true status is not permission to rewrite unsupported metadata")
+            let selected = try LocalSummaryService.selectPendingActions(try generated(["candidate1TaskStatus": "pending"]), candidates: [candidate])
+            XCTAssertEqual(selected, [candidate], "A pending status is not permission to rewrite unsupported metadata")
             XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes(with: selected), meeting: meeting,
                 allowedEvidence: ["s1"], requireTemplateSections: true))
         }
@@ -614,12 +623,16 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
 
     func testAllRejectedTaskCandidatesProduceALegitimateEmptyInventory() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
-        let candidates = statusCandidates()
-        let selected = try LocalSummaryService.selectPendingActions(try generated(["candidate1IsPendingTask": false, "candidate2IsPendingTask": false]), candidates: candidates)
+        let candidates = statusCandidates() + [
+            ActionItem(id: "unaccepted-proposal", text: "Investigate the database option.", owner: nil, due: nil, evidence: ["s1"])
+        ]
+        let selected = try LocalSummaryService.selectPendingActions(try generated([
+            "candidate1TaskStatus": "cancelled", "candidate2TaskStatus": "completed", "candidate3TaskStatus": "not_committed"
+        ]), candidates: candidates)
         XCTAssertTrue(selected.isEmpty)
         let meeting = Meeting(title: "Synthetic all-nonpending source", segments: [
             .init(id: "s1", speaker: "A", start: 0, end: 5,
-                  text: "Presentation preparation was cancelled and will not be done. The report task has already finished.")
+                  text: "Presentation preparation was cancelled and will not be done. The report task has already finished. Investigating the database is only an unaccepted option.")
         ])
         XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes(with: selected), meeting: meeting,
                                                          requireTemplateSections: true))
@@ -639,7 +652,7 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
         ]
         for candidates in malformed {
             XCTAssertThrowsError(try LocalSummaryService.validateActionCandidates(candidates, allowedEvidence: ["s1"]),
-                                "A false semantic verdict must not conceal malformed or ungrounded raw candidates")
+                                "A nonpending status must not conceal malformed or ungrounded raw candidates")
         }
         let oversized = (1...13).map { index in
             ActionItem(id: "candidate-\(index)", text: "A task.", owner: nil, due: nil, evidence: ["s1"])
@@ -676,37 +689,6 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
     private func actionSchemaObject(evidenceIDs: [String]) throws -> [String: Any] {
         try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(
             LocalSummaryService.actionGenerationSchema(evidenceIDs: evidenceIDs))) as? [String: Any])
-    }
-
-    private func finiteBooleanDomain(_ value: [String: Any], in root: [String: Any]) throws -> Set<Bool> {
-        let schema = try resolve(value, in: root)
-        if let choices = schema["anyOf"] as? [[String: Any]] {
-            guard !choices.isEmpty, schema["enum"] == nil, schema["const"] == nil,
-                  schema["type"] == nil || schema["type"] as? String == "boolean" else {
-                throw SchemaInspectionError.invalidBooleanDomain
-            }
-            return try choices.reduce(into: Set<Bool>()) { result, choice in
-                result.formUnion(try finiteBooleanDomain(choice, in: root))
-            }
-        }
-        guard schema["type"] as? String == "boolean" else { throw SchemaInspectionError.invalidBooleanDomain }
-        if let constant = schema["const"] { return [try literalBoolean(constant)] }
-        if let enumeration = schema["enum"] {
-            guard let choices = enumeration as? [Any], !choices.isEmpty else {
-                throw SchemaInspectionError.invalidBooleanDomain
-            }
-            return try Set(choices.map(literalBoolean))
-        }
-        return [false, true]
-    }
-
-    private func literalBoolean(_ value: Any) throws -> Bool {
-        let encoded = try JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])
-        switch String(decoding: encoded, as: UTF8.self) {
-        case "true": return true
-        case "false": return false
-        default: throw SchemaInspectionError.invalidBooleanDomain
-        }
     }
 
     private func permitsNull(_ value: [String: Any], in root: [String: Any]) throws -> Bool {
@@ -798,7 +780,6 @@ final class LocalSummaryGenerationSchemaTests: XCTestCase {
     private enum SchemaInspectionError: Error {
         case unsupportedReference(String)
         case unboundedStringChoices
-        case invalidBooleanDomain
     }
 
     @available(macOS 26.0, *)
