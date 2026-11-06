@@ -5,7 +5,7 @@ import FoundationModels
 /// These synthetic tests cover the production inventory/assessment boundaries.
 /// Handwritten verdicts cannot prove a model classified a real task correctly.
 final class LocalActionAssessmentTests: XCTestCase {
-    private let statuses: Set<String> = ["pending", "cancelled", "completed", "not_committed"]
+    private let commitmentStates: Set<String> = ["agreed_or_committed_future_task", "only_proposed_or_unaccepted", "cancelled_or_rejected", "already_completed"]
 
     func testInventorySchemaContainsOnlyTaskTextAndClosedChunkEvidence() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
@@ -15,16 +15,21 @@ final class LocalActionAssessmentTests: XCTestCase {
         XCTAssertEqual(array["type"] as? String, "array")
         XCTAssertEqual(array["minItems"] as? Int, 0)
         XCTAssertEqual(array["maxItems"] as? Int, 12)
+        let inventoryDescription = try XCTUnwrap(array["description"] as? String)
+        XCTAssertTrue(inventoryDescription.contains("Only explicitly agreed OR committed concrete future tasks"))
+        XCTAssertTrue(inventoryDescription.contains("Exclude discussion, proposals, completed and cancelled work"))
+        XCTAssertTrue(inventoryDescription.contains("separate agreed follow-up survives cancellation of another task"))
         let item = try resolve(try XCTUnwrap(array["items"] as? [String: Any]), in: schema)
         let itemFields = try objectFields(item, required: ["text", "evidence"])
         let text = try resolve(try XCTUnwrap(itemFields["text"] as? [String: Any]), in: schema)
         XCTAssertEqual(text["type"] as? String, "string")
+        XCTAssertTrue(try XCTUnwrap(text["description"] as? String).contains("explicitly agreed OR clearly committed"))
         let evidence = try resolve(try XCTUnwrap(itemFields["evidence"] as? [String: Any]), in: schema)
         XCTAssertEqual(evidence["type"] as? String, "array")
         XCTAssertEqual(evidence["minItems"] as? Int, 1)
         XCTAssertEqual(evidence["maxItems"] as? Int, 4)
         XCTAssertEqual(try finiteStrings(try XCTUnwrap(evidence["items"] as? [String: Any]), in: schema), ["s1", "s2"])
-        for forbidden in ["owner", "due", "responsiblePersonName", "deadlinePhrase", "status", "category", "sectionID"] {
+        for forbidden in ["owner", "due", "responsiblePersonName", "deadlinePhrase", "status", "commitmentState", "category", "sectionID"] {
             XCTAssertNil(itemFields[forbidden], "Inventory must not assign metadata or classify status")
         }
     }
@@ -76,7 +81,7 @@ final class LocalActionAssessmentTests: XCTestCase {
             item["text"] = text
             XCTAssertThrowsError(try LocalSummaryService.convertActionCandidates(try generated(["candidates": [item]]), part: 1, evidenceScope: scope))
         }
-        for field in ["owner", "due", "responsiblePersonName", "deadlinePhrase", "status", "category", "unexpected"] {
+        for field in ["owner", "due", "responsiblePersonName", "deadlinePhrase", "status", "commitmentState", "category", "unexpected"] {
             var item = valid
             item[field] = "not permitted here"
             XCTAssertThrowsError(try LocalSummaryService.convertActionCandidates(try generated(["candidates": [item]]), part: 1, evidenceScope: scope), field)
@@ -97,12 +102,31 @@ final class LocalActionAssessmentTests: XCTestCase {
         XCTAssertThrowsError(try LocalSummaryService.convertActionCandidates(try generated(["candidates": oversized]), part: 1, evidenceScope: scope))
     }
 
-    func testAssessmentSchemaHasTheSameFourStatusesAndClosedPresenceChoicesInBothLanguages() throws {
+    func testCommitmentSchemaHasOnlyTheSameFourClosedStatesInBothLanguages() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         for language in ["English", "Turkish"] {
-            let schema = try assessmentSchema(language: language)
-            let fields = try objectFields(schema, required: ["status", "responsiblePerson", "deadline"])
-            XCTAssertEqual(try finiteStrings(try XCTUnwrap(fields["status"] as? [String: Any]), in: schema), statuses)
+            let schema = try commitmentSchema(language: language)
+            let fields = try objectFields(schema, required: ["commitmentState"])
+            let commitment = try resolve(try XCTUnwrap(fields["commitmentState"] as? [String: Any]), in: schema)
+            XCTAssertEqual(try finiteStrings(commitment, in: schema), commitmentStates)
+            let description = try XCTUnwrap(commitment["description"] as? String)
+            if language == "Turkish" {
+                XCTAssertTrue(description.contains("açıkça kararlaştırılmış VEYA üstlenilmiş"))
+                XCTAssertTrue(description.contains("kabul edilmemiş/onay bekleyen teklif"))
+                XCTAssertTrue(description.contains("Sorumlu/tarih bulunmaması taahhütten bağımsızdır"))
+            } else {
+                XCTAssertTrue(description.contains("explicit agreement OR commitment to future work"))
+                XCTAssertTrue(description.contains("unaccepted offer"))
+                XCTAssertTrue(description.contains("Missing owner/date is independent of commitment"))
+            }
+        }
+    }
+
+    func testMetadataSchemaHasOnlyTheSameClosedPresenceChoicesInBothLanguages() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        for language in ["English", "Turkish"] {
+            let schema = try metadataSchema(language: language)
+            let fields = try objectFields(schema, required: ["responsiblePerson", "deadline"])
             for name in ["responsiblePerson", "deadline"] {
                 let choice = try resolve(try XCTUnwrap(fields[name] as? [String: Any]), in: schema)
                 let branches = try XCTUnwrap(choice["anyOf"] as? [[String: Any]])
@@ -131,11 +155,11 @@ final class LocalActionAssessmentTests: XCTestCase {
         }
     }
 
-    func testPendingAssessmentPreservesTaskIdentityAndEvidenceWhileExtractingVerbatimMetadata() throws {
+    func testAgreedFutureTaskAssessmentPreservesIdentityAndEvidenceWhileExtractingVerbatimMetadata() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let candidate = LocalSummaryService.ActionCandidate(id: "original-candidate", text: " Revise the design. \n", evidence: ["original-b", "original-a"])
-        let action = try XCTUnwrap(LocalSummaryService.assessedAction(try generated(assessment(
-            person: stated("Ali"), deadline: stated("by next Friday"))), candidate: candidate))
+        let action = try LocalSummaryService.actionFromMetadata(try generated(metadata(
+            person: stated("Ali"), deadline: stated("by next Friday"))), candidate: candidate)
         XCTAssertEqual(action.id, candidate.id)
         XCTAssertEqual(action.text, candidate.text)
         XCTAssertEqual(action.evidence, candidate.evidence)
@@ -152,7 +176,7 @@ final class LocalActionAssessmentTests: XCTestCase {
     func testExplicitAbsenceChoicesYieldNilWithoutCopyingAnAbsencePhraseFromSource() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let candidate = LocalSummaryService.ActionCandidate(id: "ownerless", text: "Rehberi güncelle.", evidence: ["source"])
-        let action = try XCTUnwrap(LocalSummaryService.assessedAction(try generated(assessment()), candidate: candidate))
+        let action = try LocalSummaryService.actionFromMetadata(try generated(metadata()), candidate: candidate)
         XCTAssertNil(action.owner)
         XCTAssertNil(action.due)
         let meeting = Meeting(title: "Synthetic explicit absence", segments: [
@@ -165,7 +189,7 @@ final class LocalActionAssessmentTests: XCTestCase {
     func testExplicitTemporalBoundaryRemainsVerbatimWithoutInventingACalendarDate() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let candidate = LocalSummaryService.ActionCandidate(id: "release-check", text: "Erişilebilirlik kontrolü yap.", evidence: ["source"])
-        let action = try XCTUnwrap(LocalSummaryService.assessedAction(try generated(assessment(deadline: stated("yeni sürümden önce"))), candidate: candidate))
+        let action = try LocalSummaryService.actionFromMetadata(try generated(metadata(deadline: stated("yeni sürümden önce"))), candidate: candidate)
         XCTAssertNil(action.owner)
         XCTAssertEqual(action.due, "yeni sürümden önce")
         let meeting = Meeting(title: "Synthetic temporal boundary", segments: [
@@ -175,40 +199,63 @@ final class LocalActionAssessmentTests: XCTestCase {
         XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes([action]), meeting: meeting, requireTemplateSections: true))
     }
 
-    func testAllNonpendingStatusesDiscardOnlyTheirCandidateAfterStrictMetadataParsing() throws {
+    func testOnlyAnExplicitAgreedFutureTaskAllowsTheMetadataStage() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
-        let candidate = sampleCandidate()
-        for status in statuses.subtracting(["pending"]) {
-            XCTAssertNil(try LocalSummaryService.assessedAction(try generated(assessment(status: status)), candidate: candidate))
-            for name in ["responsiblePerson", "deadline"] {
-                var malformed = assessment(status: status)
-                malformed[name] = ["type": "notStated", "verbatimValue": "must not be ignored"]
-                XCTAssertThrowsError(try LocalSummaryService.assessedAction(try generated(malformed), candidate: candidate),
-                                    "A nonpending classification must not hide a malformed \(name) branch")
-            }
+        for state in commitmentStates {
+            XCTAssertEqual(try LocalSummaryService.commitmentAllowsAction(try generated(commitment(state))),
+                           state == "agreed_or_committed_future_task")
+            var joint = metadata()
+            joint["commitmentState"] = state
+            XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(joint)),
+                                "Classifier must reject metadata fields even for an unaccepted or cancelled task")
+            XCTAssertThrowsError(try LocalSummaryService.actionFromMetadata(try generated(joint), candidate: sampleCandidate()),
+                                "Metadata decoding must not silently accept the obsolete joint result")
         }
     }
 
-    func testAssessmentRejectsMissingExtraAndWrongTypedRootFieldsWithoutDefaults() throws {
+    func testCommitmentParserRejectsMissingExtraWrongTypedUnknownAndObsoleteWireWithoutDefaults() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        for invalid in [nil, NSNull(), 42, true, [] as [String], [:] as [String: String]] as [Any?] {
+            var value: [String: Any] = [:]
+            value["commitmentState"] = invalid
+            XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(value)))
+        }
+        for name in ["id", "candidate", "text", "evidence", "owner", "due", "responsiblePerson", "deadline", "status", "unexpected"] {
+            var value = commitment()
+            if name == "responsiblePerson" || name == "deadline" {
+                value[name] = absent()
+            } else {
+                value[name] = "unrequested value"
+            }
+            XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(value)), name)
+        }
+        XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(["status": "pending"])))
+        for state in ["", "pending", "cancelled", "completed", "not_committed", "Pending", "pending ", " pending", "unknown", "not committed", "bekliyor", "true",
+                      "Agreed_or_committed_future_task", "AGREED_OR_COMMITTED_FUTURE_TASK", " agreed_or_committed_future_task", "agreed_or_committed_future_task "] {
+            XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(commitment(state))), state)
+        }
+        for json in ["null", "[]", "true", "42", "\"pending\"", "\"agreed_or_committed_future_task\""] {
+            XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(GeneratedContent(json: json)))
+        }
+    }
+
+    func testMetadataParserRejectsMissingExtraAndWrongTypedRootFieldsWithoutDefaults() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let candidate = sampleCandidate()
-        for field in ["status", "responsiblePerson", "deadline"] {
+        for field in ["responsiblePerson", "deadline"] {
             for invalid in [nil, NSNull(), 42, true, [] as [String], ""] as [Any?] {
-                var value = assessment()
+                var value = metadata()
                 value[field] = invalid
-                XCTAssertThrowsError(try LocalSummaryService.assessedAction(try generated(value), candidate: candidate), field)
+                XCTAssertThrowsError(try LocalSummaryService.actionFromMetadata(try generated(value), candidate: candidate), field)
             }
         }
-        for name in ["id", "candidate", "text", "evidence", "owner", "due", "unexpected"] {
-            var value = assessment()
-            value[name] = "unrequested value"
-            XCTAssertThrowsError(try LocalSummaryService.assessedAction(try generated(value), candidate: candidate), name)
+        for name in ["id", "candidate", "text", "evidence", "owner", "due", "commitmentState", "status", "unexpected"] {
+            var value = metadata()
+            value[name] = name == "commitmentState" ? "agreed_or_committed_future_task" : "unrequested value"
+            XCTAssertThrowsError(try LocalSummaryService.actionFromMetadata(try generated(value), candidate: candidate), name)
         }
-        for status in ["", "Pending", "pending ", " pending", "unknown", "not committed", "bekliyor", "true"] {
-            XCTAssertThrowsError(try LocalSummaryService.assessedAction(try generated(assessment(status: status)), candidate: candidate), status)
-        }
-        for json in ["null", "[]", "true", "42", "\"pending\""] {
-            XCTAssertThrowsError(try LocalSummaryService.assessedAction(GeneratedContent(json: json), candidate: candidate))
+        for json in ["null", "[]", "true", "42", "\"notStated\""] {
+            XCTAssertThrowsError(try LocalSummaryService.actionFromMetadata(GeneratedContent(json: json), candidate: candidate))
         }
     }
 
@@ -229,9 +276,9 @@ final class LocalActionAssessmentTests: XCTestCase {
         ]
         for name in ["responsiblePerson", "deadline"] {
             for branch in malformed {
-                var value = assessment()
+                var value = metadata()
                 value[name] = branch
-                XCTAssertThrowsError(try LocalSummaryService.assessedAction(try generated(value), candidate: sampleCandidate()), name)
+                XCTAssertThrowsError(try LocalSummaryService.actionFromMetadata(try generated(value), candidate: sampleCandidate()), name)
             }
         }
     }
@@ -244,9 +291,9 @@ final class LocalActionAssessmentTests: XCTestCase {
         ])
         for name in ["responsiblePerson", "deadline"] {
             for unsupported in ["null", "None", "Belirtilmedi", "nil", "N/A", "Ayşe", "2030-01-01"] {
-                var value = assessment()
+                var value = metadata()
                 value[name] = stated(unsupported)
-                let action = try XCTUnwrap(LocalSummaryService.assessedAction(try generated(value), candidate: candidate))
+                let action = try LocalSummaryService.actionFromMetadata(try generated(value), candidate: candidate)
                 XCTAssertEqual(name == "responsiblePerson" ? action.owner : action.due, unsupported)
                 XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes([action]), meeting: meeting, requireTemplateSections: true))
             }
@@ -260,13 +307,13 @@ final class LocalActionAssessmentTests: XCTestCase {
             .init(id: "original-a", speaker: "A", start: 0, end: 3, text: "The team agreed to revise the design; assignment remains open."),
             .init(id: "original-b", speaker: "B", start: 4, end: 7, text: "Ali will revise the design by next Friday.")
         ])
-        for value in [assessment(person: stated("Ali")), assessment(deadline: stated("next Friday"))] {
-            let action = try XCTUnwrap(LocalSummaryService.assessedAction(try generated(value), candidate: candidate))
+        for value in [metadata(person: stated("Ali")), metadata(deadline: stated("next Friday"))] {
+            let action = try LocalSummaryService.actionFromMetadata(try generated(value), candidate: candidate)
             XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes([action]), meeting: meeting, requireTemplateSections: true))
         }
         var fragmented = meeting
         fragmented.segments[0].text += " Ali will revise the design by next Friday."
-        let action = try XCTUnwrap(LocalSummaryService.assessedAction(try generated(assessment(person: stated("Ali"), deadline: stated("next Friday"))), candidate: candidate))
+        let action = try LocalSummaryService.actionFromMetadata(try generated(metadata(person: stated("Ali"), deadline: stated("next Friday"))), candidate: candidate)
         XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes([action]), meeting: fragmented,
             scopedText: ["original-a": meeting.segments[0].text], requireTemplateSections: true))
     }
@@ -278,10 +325,10 @@ final class LocalActionAssessmentTests: XCTestCase {
             .init(id: "original-a", speaker: "A", start: 0, end: 3, text: "I commit to revising the design.")
         ])
         meeting.speakerNames = ["A": "Ali"]
-        let named = try XCTUnwrap(LocalSummaryService.assessedAction(try generated(assessment(person: stated("Ali"))), candidate: candidate))
+        let named = try LocalSummaryService.actionFromMetadata(try generated(metadata(person: stated("Ali"))), candidate: candidate)
         XCTAssertNoThrow(try LocalSummaryService.validate(notes: notes([named]), meeting: meeting, requireTemplateSections: true))
         meeting.speakerNames = [:]
-        let anonymous = try XCTUnwrap(LocalSummaryService.assessedAction(try generated(assessment(person: stated("A"))), candidate: candidate))
+        let anonymous = try LocalSummaryService.actionFromMetadata(try generated(metadata(person: stated("A"))), candidate: candidate)
         XCTAssertThrowsError(try LocalSummaryService.validate(notes: notes([anonymous]), meeting: meeting, requireTemplateSections: true))
     }
 
@@ -292,6 +339,7 @@ final class LocalActionAssessmentTests: XCTestCase {
             .init(id: "original-a", speaker: "A", start: 0, end: 10, text: "Later fragment of the same original source.", providedSpeakerName: "Ali")
         ]
         let scope = try LocalSummaryService.evidenceScope(sources: sources)
+        XCTAssertEqual(scope.sources.map(\.speaker), sources.map(\.speaker), "Raw labels remain available locally for grounding")
         let candidate = sampleCandidate()
         let input = try LocalSummaryService.actionAssessmentInput(candidate: candidate, evidenceScope: scope)
         XCTAssertEqual(input.supportingSources.map(\.sourcePosition), [0, 2])
@@ -305,17 +353,27 @@ final class LocalActionAssessmentTests: XCTestCase {
             let source = scope.sources[position]
             XCTAssertEqual(row["sourcePosition"] as? Int, position)
             XCTAssertEqual(row["id"] as? String, source.id)
-            XCTAssertEqual(row["speakerLabel"] as? String, source.speaker)
+            XCTAssertNil(row["speakerLabel"], "Model assessment input must not expose a channel as a possible person name")
+            XCTAssertNil(row["speaker"])
             XCTAssertEqual(row["providedSpeakerName"] as? String, source.providedSpeakerName)
             XCTAssertEqual(row["text"] as? String, source.text)
             XCTAssertEqual(row["start"] as? Double, source.start)
             XCTAssertEqual(row["end"] as? Double, source.end)
+            var expected: Set<String> = ["sourcePosition", "id", "start", "end", "text"]
+            if source.providedSpeakerName != nil { expected.insert("providedSpeakerName") }
+            XCTAssertEqual(Set(row.keys), expected)
         }
         let inputCandidate = try XCTUnwrap(encoded["candidate"] as? [String: Any])
         XCTAssertEqual(inputCandidate["id"] as? String, candidate.id)
         XCTAssertEqual(inputCandidate["text"] as? String, candidate.text)
         XCTAssertEqual(inputCandidate["evidence"] as? [String], ["s1"])
         XCTAssertNil(others[0]["providedSpeakerName"], "An unmapped source must not acquire a guessed identity")
+        let metadataInput = try LocalSummaryService.actionMetadataInput(candidate: candidate, evidenceScope: scope)
+        XCTAssertEqual(metadataInput.candidate, input.candidate)
+        XCTAssertEqual(metadataInput.supportingSources, input.supportingSources)
+        let metadataObject = try jsonObject(metadataInput)
+        XCTAssertEqual(Set(metadataObject.keys), ["candidate", "supportingSources"])
+        XCTAssertNil(metadataObject["otherSources"], "Metadata extraction must not receive unrelated source entries")
     }
 
     func testPartitionOrderDoesNotFollowCandidateEvidenceOrderAndUnknownSourcesCannotBeHidden() throws {
@@ -327,6 +385,7 @@ final class LocalActionAssessmentTests: XCTestCase {
         for evidence in [[], ["foreign-source"], ["original-a", "foreign-source"], ["s1"]] as [[String]] {
             let candidate = LocalSummaryService.ActionCandidate(id: "candidate", text: "Revise the design.", evidence: evidence)
             XCTAssertThrowsError(try LocalSummaryService.actionAssessmentInput(candidate: candidate, evidenceScope: scope))
+            XCTAssertThrowsError(try LocalSummaryService.actionMetadataInput(candidate: candidate, evidenceScope: scope))
         }
     }
 
@@ -354,9 +413,11 @@ final class LocalActionAssessmentTests: XCTestCase {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let cancelled = LocalSummaryService.ActionCandidate(id: "cancelled", text: "Prepare the presentation.", evidence: ["shared"])
         let pending = LocalSummaryService.ActionCandidate(id: "pending", text: "Müşteriye iptal kararını bildir.", evidence: ["shared"])
-        XCTAssertNil(try LocalSummaryService.assessedAction(try generated(assessment(status: "cancelled")), candidate: cancelled))
-        let action = try XCTUnwrap(LocalSummaryService.assessedAction(try generated(assessment(person: stated("Selin"), deadline: stated("yarın"))), candidate: pending))
+        XCTAssertFalse(try LocalSummaryService.commitmentAllowsAction(try generated(commitment("cancelled_or_rejected"))))
+        XCTAssertTrue(try LocalSummaryService.commitmentAllowsAction(try generated(commitment())))
+        let action = try LocalSummaryService.actionFromMetadata(try generated(metadata(person: stated("Selin"), deadline: stated("yarın"))), candidate: pending)
         XCTAssertEqual(action.id, pending.id)
+        XCTAssertNotEqual(action.id, cancelled.id)
         XCTAssertEqual(action.text, pending.text)
         XCTAssertEqual(action.evidence, pending.evidence)
         let meeting = Meeting(title: "Synthetic cancellation and follow-up", segments: [
@@ -383,8 +444,11 @@ final class LocalActionAssessmentTests: XCTestCase {
 
     private func absent() -> [String: Any] { ["type": "notStated"] }
     private func stated(_ value: String) -> [String: Any] { ["type": "stated", "verbatimValue": value] }
-    private func assessment(status: String = "pending", person: [String: Any]? = nil, deadline: [String: Any]? = nil) -> [String: Any] {
-        ["status": status, "responsiblePerson": person ?? absent(), "deadline": deadline ?? absent()]
+    private func commitment(_ state: String = "agreed_or_committed_future_task") -> [String: Any] {
+        ["commitmentState": state]
+    }
+    private func metadata(person: [String: Any]? = nil, deadline: [String: Any]? = nil) -> [String: Any] {
+        ["responsiblePerson": person ?? absent(), "deadline": deadline ?? absent()]
     }
 
     @available(macOS 26.0, *)
@@ -402,8 +466,13 @@ final class LocalActionAssessmentTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
-    private func assessmentSchema(language: String) throws -> [String: Any] {
-        try jsonObject(LocalSummaryService.actionAssessmentSchema(language: language))
+    private func commitmentSchema(language: String) throws -> [String: Any] {
+        try jsonObject(LocalSummaryService.actionCommitmentSchema(language: language))
+    }
+
+    @available(macOS 26.0, *)
+    private func metadataSchema(language: String) throws -> [String: Any] {
+        try jsonObject(LocalSummaryService.actionMetadataSchema(language: language))
     }
 
     private func objectFields(_ schema: [String: Any], required expected: Set<String>) throws -> [String: Any] {

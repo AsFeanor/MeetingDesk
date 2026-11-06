@@ -252,7 +252,7 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         XCTAssertNoThrow(try LocalSummaryService.validate(notes: combined, meeting: meeting, requireTemplateSections: true))
     }
 
-    func testSourceJSONSeparatesRawSpeakerLabelsFromOnlyProvidedIdentityWithoutChangingData() throws {
+    func testSourceJSONExposesOnlyProvidedIdentityWhileRetainingRawLabelsLocallyAndInArchive() throws {
         var meeting = Meeting(title: "Synthetic source metadata", segments: [
             .init(id: "original-first", speaker: "A", start: 0.5, end: 4.75, text: "A report was discussed."),
             .init(id: "original-second", speaker: "B", start: 5.25, end: 9.5, text: "A task remains open.")
@@ -267,13 +267,16 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         for (index, object) in objects.enumerated() {
             let original = meeting.segments[index]
             XCTAssertEqual(object["id"] as? String, original.id)
-            XCTAssertEqual(object["speakerLabel"] as? String, original.speaker)
+            XCTAssertNil(object["speakerLabel"], "Anonymous channel labels must not reach model input")
             XCTAssertEqual(object["start"] as? Double, original.start)
             XCTAssertEqual(object["end"] as? Double, original.end)
             XCTAssertEqual(object["text"] as? String, original.text)
             XCTAssertNil(object["speaker"], "The ambiguous input key must not invite copying a channel label into a person field")
             XCTAssertNil(object["responsiblePersonName"])
             XCTAssertNil(object["deadlinePhrase"])
+            var expected: Set<String> = ["id", "start", "end", "text"]
+            if sources[index].providedSpeakerName != nil { expected.insert("providedSpeakerName") }
+            XCTAssertEqual(Set(object.keys), expected)
         }
         XCTAssertEqual(objects[0]["providedSpeakerName"] as? String, "Ayşe")
         XCTAssertNil(objects[1]["providedSpeakerName"], "No user mapping means no identity metadata, including no null placeholder")
@@ -285,12 +288,22 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         let scopedObjects = try sourceObjects(scope.sources)
         for (index, object) in scopedObjects.enumerated() {
             XCTAssertEqual(object["id"] as? String, "s\(index + 1)")
-            for field in ["speakerLabel", "providedSpeakerName", "start", "end", "text"] {
+            XCTAssertNil(object["speakerLabel"])
+            XCTAssertNil(object["speaker"])
+            for field in ["providedSpeakerName", "start", "end", "text"] {
                 let actual = object[field] as? NSObject
                 let original = objects[index][field] as? NSObject
                 XCTAssertEqual(actual, original, "Aliasing must change only the source ID")
             }
         }
+        let archiveData = try JSONEncoder().encode(meeting)
+        let archive = try XCTUnwrap(JSONSerialization.jsonObject(with: archiveData) as? [String: Any])
+        let archiveSegments = try XCTUnwrap(archive["segments"] as? [[String: Any]])
+        XCTAssertEqual(archiveSegments.compactMap { $0["speaker"] as? String }, ["A", "B"],
+                       "Omitting raw labels from generation must not remove them from saved meetings")
+        let restored = try JSONDecoder().decode(Meeting.self, from: archiveData)
+        XCTAssertEqual(restored.segments, meeting.segments)
+        XCTAssertEqual(restored.speakerNames, meeting.speakerNames)
     }
 
     func testNameLookingOrAnonymousSpeakerLabelsDoNotBecomeProvidedNamesWithoutMapping() throws {
@@ -306,6 +319,8 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         for object in try sourceObjects(sources) {
             XCTAssertNil(object["providedSpeakerName"], "A label that resembles a name is still not a user-supplied identity")
             XCTAssertNil(object["speaker"])
+            XCTAssertNil(object["speakerLabel"])
+            XCTAssertEqual(Set(object.keys), ["id", "start", "end", "text"])
         }
     }
 
@@ -329,7 +344,7 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
                 XCTAssertEqual(source.end, 90.75)
             }
             for object in try sourceObjects(scope.sources) {
-                XCTAssertEqual(object["speakerLabel"] as? String, "A")
+                XCTAssertNil(object["speakerLabel"])
                 XCTAssertEqual(object["providedSpeakerName"] as? String, "Deniz")
                 XCTAssertNil(object["speaker"])
             }

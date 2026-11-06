@@ -304,9 +304,9 @@ final class NotesRevisionPolicyTests: XCTestCase {
         for template in MeetingTemplate.allCases {
             let prompt = LocalSummaryService.instructions(language: "Turkish", template: template)
             XCTAssertTrue(prompt.contains("Meeting template: \(template.rawValue)"))
-            let actionPrompt = LocalSummaryService.actionAssessmentInstructions(language: "English")
-            XCTAssertTrue(actionPrompt.contains("Extract responsiblePerson and deadline ONLY from supportingSources"))
-            XCTAssertTrue(actionPrompt.contains("never infer or convert a date"))
+            let actionPrompt = LocalSummaryService.actionMetadataInstructions(language: "English")
+            XCTAssertTrue(actionPrompt.contains("responsible person and temporal deadline for this single candidate from supportingSources"))
+            XCTAssertTrue(actionPrompt.contains("Never infer or convert a date"))
             XCTAssertTrue(prompt.lowercased().contains("untrusted"))
         }
     }
