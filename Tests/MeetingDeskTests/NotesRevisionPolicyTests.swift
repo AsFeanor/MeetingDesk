@@ -304,9 +304,9 @@ final class NotesRevisionPolicyTests: XCTestCase {
         for template in MeetingTemplate.allCases {
             let prompt = LocalSummaryService.instructions(language: "Turkish", template: template)
             XCTAssertTrue(prompt.contains("Meeting template: \(template.rawValue)"))
-            let actionPrompt = LocalSummaryService.actionMetadataInstructions(language: "English")
-            XCTAssertTrue(actionPrompt.contains("responsible person and temporal deadline for this single candidate from supportingSources"))
-            XCTAssertTrue(actionPrompt.contains("Never infer or convert a date"))
+            let actionPrompt = LocalSummaryService.actionMetadataValuesInstructions(language: "English")
+            XCTAssertTrue(actionPrompt.contains("Copy verbatim ONLY the explicitly stated supportingSources values requested by the schema"))
+            XCTAssertTrue(actionPrompt.contains("Do not infer or convert dates"))
             XCTAssertTrue(prompt.lowercased().contains("untrusted"))
         }
     }

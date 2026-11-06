@@ -1,11 +1,11 @@
 ## Toplantı 0.5.4
 
-Yerel özette aksiyonların tartışma konuları arasında kaybolup boş kalması düzeltildi.
+Yerel özetlerde takip işlerinin aksiyon listesine aktarılması iyileştirildi.
 
-- Aksiyonlar, kararlar, sorular, fikirler ve konular artık ayrı listeler halinde çıkarılır. Konu özetleri aksiyonların yerini doldurmaz.
-- Açıkça kabul edilen veya üstlenilen araştırma ve takip işleri aksiyon olarak değerlendirilir. Sorumlu ya da tarih belirtilmeyen işler de alanları boş bırakılarak korunur.
-- Yalnız önerilen, koşula bağlı, iptal edilmiş veya zaten tamamlanmış işler yeni aksiyon olarak eklenmez. Konuşmada olmayan sorumlu ve tarihler uydurulmaz.
-- Her listenin kendi üretim sınırı vardır; tüm yanıtın boyutu yerel modelin alanına göre hesaplanır. Kaynak bağlantıları, toplantı şablonları ve mevcut arşiv biçimi korunur.
+- Aksiyonlar toplantı özetinden ayrı incelenir; her aday işin açıkça kararlaştırıldığı veya üstlenildiği kontrol edilir.
+- Sorumlu kişi ve teslim ifadesi ayrıca kontrol edilir. Belirtilmeyen alanlar boş kalır; aksiyon bu yüzden elenmez.
+- Öneri, iptal ve tamamlanma açıklamaları kaynak bölümü içindeki aksiyon kontrolünde dikkate alınır.
+- Uzun toplantılar bölüm bölüm işlenir. Her yerel model isteği kendi boyut sınırıyla kontrol edilir. Kaynak bağlantıları, toplantı şablonları ve mevcut arşiv biçimi korunur.
 
 Güncellemeden sonra aynı toplantıyı açıp seçtiğiniz şablonla **Özeti yenile** kullanın. Transkripti yeniden oluşturmanız gerekmez. Mevcut transkript ve notlar aynı arşivdedir.
 
