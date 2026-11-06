@@ -1,4 +1,5 @@
 import XCTest
+import FoundationModels
 @testable import MeetingDesk
 
 /// Encoding invariance is a byte-level input contract, not evidence that a
@@ -15,6 +16,42 @@ final class LocalModelInputEncodingTests: XCTestCase {
             XCTAssertEqual(try LocalSummaryService.modelInputData(equivalent.input), assessmentBytes)
             XCTAssertEqual(try LocalSummaryService.modelInputData(equivalent.metadata), metadataBytes)
         }
+    }
+
+    func testCatalogAndClosedOwnerInputsHaveStableBytesWithoutChangingFragmentsNamesOrProvenance() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        func inputs() throws -> ([LocalSummaryService.PersonalNameSource], LocalSummaryService.OwnerChoiceInput) {
+            let scope = try LocalSummaryService.evidenceScope(sources: [
+                .init(id: "task-original", speaker: "A", start: 0.25, end: 8.75, text: "Ay", providedSpeakerName: "Deniz"),
+                .init(id: "other-original", speaker: "B", start: 9, end: 10, text: "Başka konu 👩🏽‍💻."),
+                .init(id: "task-original", speaker: "A", start: 0.25, end: 8.75, text: "şe will update the guide.\n", providedSpeakerName: "Deniz")
+            ])
+            let catalog = try LocalSummaryService.parsePersonalNameCatalog(
+                GeneratedContent(json: #"{"s2":[],"s1":["Ayşe"]}"#), evidenceScope: scope)
+            let candidate = LocalSummaryService.ActionCandidate(id: "canonical-candidate", text: "Ayşe will update the guide.", evidence: ["task-original"])
+            let domain = try LocalSummaryService.personChoiceDomain(candidate: candidate, evidenceScope: scope, catalog: catalog)
+            return (LocalSummaryService.personalNameCatalogInput(evidenceScope: scope),
+                    try LocalSummaryService.ownerChoiceInput(candidate: candidate, evidenceScope: scope, domain: domain))
+        }
+        let first = try inputs()
+        let catalogBytes = try LocalSummaryService.modelInputData(first.0)
+        let ownerBytes = try LocalSummaryService.modelInputData(first.1)
+        for _ in 0..<32 {
+            let equivalent = try inputs()
+            XCTAssertEqual(try LocalSummaryService.modelInputData(equivalent.0), catalogBytes)
+            XCTAssertEqual(try LocalSummaryService.modelInputData(equivalent.1), ownerBytes)
+        }
+        let catalog = try XCTUnwrap(JSONSerialization.jsonObject(with: catalogBytes) as? [[String: Any]])
+        XCTAssertEqual(catalog.compactMap { $0["sourceAlias"] as? String }, ["s1", "s2", "s1"])
+        XCTAssertEqual(catalog.compactMap { $0["text"] as? String }, ["Ay", "Başka konu 👩🏽‍💻.", "şe will update the guide.\n"])
+        for entry in catalog { XCTAssertEqual(Set(entry.keys), ["sourceAlias", "text"]) }
+        let owner = try XCTUnwrap(JSONSerialization.jsonObject(with: ownerBytes) as? [String: Any])
+        let sources = try XCTUnwrap(owner["supportingSources"] as? [[String: Any]])
+        XCTAssertEqual(sources.compactMap { $0["sourcePosition"] as? Int }, [0, 2])
+        let choices = try XCTUnwrap(owner["personChoices"] as? [[String: Any]])
+        XCTAssertEqual(choices.compactMap { $0["name"] as? String }, ["Ayşe", "Deniz"])
+        XCTAssertEqual(choices.compactMap { $0["provenance"] as? String }, ["source_text", "provided_speaker_name"])
+        XCTAssertTrue(choices.allSatisfy { $0["sourceAlias"] as? String == "s1" })
     }
 
     func testLogicallyEquivalentNestedDictionariesIgnoreInsertionOrderWithoutChangingValues() throws {

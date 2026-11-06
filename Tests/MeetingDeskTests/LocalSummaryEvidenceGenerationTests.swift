@@ -351,6 +351,28 @@ final class LocalSummaryEvidenceGenerationTests: XCTestCase {
         }
     }
 
+    func testSourceCountCapPartitionsTinyEntriesWithoutDeletingReorderingOrChangingIdentity() throws {
+        var meeting = Meeting(title: "Synthetic bounded map source count", segments: (0..<11).map { index in
+            .init(id: "source-\(index)", speaker: index.isMultiple(of: 2) ? "A" : "B",
+                  start: Double(index) + 0.25, end: Double(index) + 0.75,
+                  text: "İş \(index) 👩🏽‍💻.")
+        })
+        meeting.speakerNames = ["A": "Ayşe"]
+        let uncapped = try LocalSummaryService.sourceChunks(meeting: meeting, maximumBytes: 4_800)
+        XCTAssertEqual(uncapped.count, 1, "This fixture isolates the entry cap from byte splitting")
+        let capped = try LocalSummaryService.sourceChunks(meeting: meeting, maximumBytes: 4_800, maximumSources: 4)
+        XCTAssertEqual(capped.map(\.count), [4, 4, 3])
+        XCTAssertEqual(capped.flatMap { $0 }, uncapped.flatMap { $0 },
+                       "A request-size cap must preserve every original entry and all text/time/name data")
+        for chunk in capped {
+            XCTAssertLessThanOrEqual(chunk.count, 4)
+            XCTAssertLessThanOrEqual(try LocalSummaryService.evidenceScope(sources: chunk).evidenceIDs.count, 4)
+        }
+        for invalid in [0, -1, Int.min] {
+            XCTAssertThrowsError(try LocalSummaryService.sourceChunks(meeting: meeting, maximumBytes: 4_800, maximumSources: invalid))
+        }
+    }
+
     private func sourceObjects(_ sources: [LocalSummaryService.Source]) throws -> [[String: Any]] {
         try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(sources)) as? [[String: Any]])
     }
