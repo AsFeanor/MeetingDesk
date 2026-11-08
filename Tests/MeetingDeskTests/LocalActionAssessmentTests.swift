@@ -334,32 +334,34 @@ final class LocalActionAssessmentTests: XCTestCase {
             let fields = try objectFields(schema, required: ["workKind"])
             XCTAssertEqual(schema["x-order"] as? [String], ["workKind"])
             let kind = try resolve(try XCTUnwrap(fields["workKind"] as? [String: Any]), in: schema)
-            XCTAssertEqual(try finiteStrings(kind, in: schema), ["concrete_execution", "state_preference_or_discussion"])
+            XCTAssertEqual(try finiteStrings(kind, in: schema), ["operation_specified", "state_preference_or_discussion"])
             let description = try XCTUnwrap(kind["description"] as? String)
             if language == "Turkish" {
-                XCTAssertTrue(description.contains("Öneri/kabul/iptal/tamamlanma durumundan bağımsız"))
-                XCTAssertTrue(description.contains("sorumlu/tarih gerekmez"))
-                XCTAssertTrue(description.contains("gerçek bakım/kontrol"))
+                XCTAssertTrue(description.contains("karar/öneri/üstlenme/iptal/tamamlanma cümlesinin içinde"))
+                XCTAssertTrue(description.contains("başladığı/yapıldığı/bittiği, gelecek zaman eki veya kabul kesinliği aranmaz"))
+                XCTAssertTrue(description.contains("Sorumlu/tarih gerekmez"))
+                XCTAssertTrue(description.contains("somut işlem/çıktı/inceleme/bakım-kontrol içeriği"))
             } else {
-                XCTAssertTrue(description.contains("independent of proposed/accepted/cancelled/completed status"))
-                XCTAssertTrue(description.contains("missing owner/date"))
-                XCTAssertTrue(description.contains("actual maintenance/checking"))
+                XCTAssertTrue(description.contains("inside a decision/proposal/undertaking/cancellation/completion statement"))
+                XCTAssertTrue(description.contains("No start/performance/completion evidence, future-tense form or acceptance certainty required"))
+                XCTAssertTrue(description.contains("Owner/date need not be stated"))
+                XCTAssertTrue(description.contains("concrete operation/deliverable/investigation/maintenance content"))
             }
         }
     }
 
     func testWorkNatureDecoderRejectsMalformedOrUnknownResponsesWithoutDefaultingToAChoice() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
-        XCTAssertTrue(try LocalSummaryService.workNatureIsExecution(try generated(["workKind": "concrete_execution"])))
+        XCTAssertTrue(try LocalSummaryService.workNatureIsExecution(try generated(["workKind": "operation_specified"])))
         XCTAssertFalse(try LocalSummaryService.workNatureIsExecution(try generated(["workKind": "state_preference_or_discussion"])))
-        for invalid in [nil, NSNull(), true, false, 0, 1, [], [:], "", "execution", "state", "pending", "agreed_or_committed_future_task", "somut_is", "Concrete_execution", " concrete_execution", "concrete_execution "] as [Any?] {
+        for invalid in [nil, NSNull(), true, false, 0, 1, [], [:], "", "execution", "state", "pending", "agreed_or_committed_future_task", "somut_is", "concrete_execution", "Concrete_execution", "Operation_specified", " operation_specified", "operation_specified "] as [Any?] {
             var wire: [String: Any] = [:]; wire["workKind"] = invalid
             XCTAssertThrowsError(try LocalSummaryService.workNatureIsExecution(try generated(wire)))
         }
         for field in ["sourceObservation", "commitmentState", "status", "personChoice", "hasExplicitTaskTime", "taskTimePhrase", "unexpected"] {
             for extra in [NSNull(), "", true, "not permitted"] as [Any] {
                 XCTAssertThrowsError(try LocalSummaryService.workNatureIsExecution(try generated([
-                    "workKind": "concrete_execution", field: extra
+                    "workKind": "operation_specified", field: extra
                 ])), field)
             }
         }
@@ -368,9 +370,9 @@ final class LocalActionAssessmentTests: XCTestCase {
         }
     }
 
-    func testConcreteWorkNatureDoesNotReplaceTheIndependentFiveStateCommitmentContract() throws {
+    func testSpecifiedOperationDoesNotReplaceTheIndependentFiveStateCommitmentContract() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
-        let natureOnly = try generated(["workKind": "concrete_execution"])
+        let natureOnly = try generated(["workKind": "operation_specified"])
         XCTAssertTrue(try LocalSummaryService.workNatureIsExecution(natureOnly))
         XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(natureOnly))
         for state in ["agreed_or_committed_future_task", "only_proposed_or_unaccepted", "cancelled_or_rejected", "already_completed", "not_a_future_execution_task"] {
@@ -793,6 +795,35 @@ final class LocalActionAssessmentTests: XCTestCase {
         let metadataObject = try jsonObject(metadataInput)
         XCTAssertEqual(Set(metadataObject.keys), ["candidate", "supportingSources"])
         XCTAssertNil(metadataObject["otherSources"], "Metadata extraction must not receive unrelated source entries")
+    }
+
+    func testNatureContentInputRetainsAllCitedFragmentsWhileCommitmentKeepsLaterCancellation() throws {
+        let sources: [LocalSummaryService.Source] = [
+            .init(id: "operation", speaker: "A", start: 0, end: 2, text: "Leila will inspect ", providedSpeakerName: "Leila"),
+            .init(id: "later-status", speaker: "B", start: 9, end: 10, text: "The inspection was later cancelled."),
+            .init(id: "assignment", speaker: "C", start: 3, end: 4, text: "Leila accepted this work."),
+            .init(id: "operation", speaker: "A", start: 0, end: 2, text: "the storage diagram.", providedSpeakerName: "Leila")
+        ]
+        let scope = try LocalSummaryService.evidenceScope(sources: sources)
+        let candidate = LocalSummaryService.ActionCandidate(id: "operation-task", text: "Inspect the storage diagram.",
+                                                            evidence: ["assignment", "operation"])
+        // These are the actual production builders used by the two distinct requests.
+        let nature = try LocalSummaryService.actionMetadataInput(candidate: candidate, evidenceScope: scope)
+        let commitment = try LocalSummaryService.actionAssessmentInput(candidate: candidate, evidenceScope: scope)
+        XCTAssertEqual(nature.candidate, commitment.candidate)
+        XCTAssertEqual(nature.candidate.id, candidate.id)
+        XCTAssertEqual(nature.candidate.text, candidate.text)
+        XCTAssertEqual(nature.supportingSources.map(\.sourcePosition), [0, 2, 3])
+        XCTAssertEqual(nature.supportingSources.map(\.text), [sources[0].text, sources[2].text, sources[3].text])
+        XCTAssertEqual(nature.supportingSources, commitment.supportingSources)
+        XCTAssertEqual(commitment.otherSources.map(\.text), [sources[1].text],
+                       "Nature scope reduction must not remove a later cancellation from commitment")
+        let object = try jsonObject(nature)
+        XCTAssertEqual(Set(object.keys), ["candidate", "supportingSources"])
+        XCTAssertNil(object["otherSources"])
+        let bytes = try LocalSummaryService.modelInputData(nature)
+        XCTAssertFalse(String(decoding: bytes, as: UTF8.self).contains(sources[1].text))
+        XCTAssertEqual(commitment.supportingSources.count + commitment.otherSources.count, sources.count)
     }
 
     func testPartitionOrderDoesNotFollowCandidateEvidenceOrderAndUnknownSourcesCannotBeHidden() throws {
