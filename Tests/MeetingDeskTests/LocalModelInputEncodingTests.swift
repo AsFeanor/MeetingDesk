@@ -42,9 +42,9 @@ final class LocalModelInputEncodingTests: XCTestCase {
             XCTAssertEqual(try LocalSummaryService.modelInputData(equivalent.1), ownerBytes)
         }
         let catalog = try XCTUnwrap(JSONSerialization.jsonObject(with: catalogBytes) as? [[String: Any]])
-        XCTAssertEqual(catalog.compactMap { $0["sourceAlias"] as? String }, ["s1", "s2", "s1"])
-        XCTAssertEqual(catalog.compactMap { $0["text"] as? String }, ["Ay", "Başka konu 👩🏽‍💻.", "şe will update the guide.\n"])
-        for entry in catalog { XCTAssertEqual(Set(entry.keys), ["sourceAlias", "text"]) }
+        XCTAssertEqual(catalog.compactMap { $0["sourceAlias"] as? String }, ["s1", "s2"])
+        XCTAssertEqual(catalog.compactMap { $0["text"] as? String }, ["Ayşe will update the guide.\n", "Başka konu 👩🏽‍💻."])
+        for entry in catalog { XCTAssertEqual(Set(entry.keys), ["sourceAlias", "text", "leadingWholeWordBoundary", "trailingWholeWordBoundary"]) }
         let owner = try XCTUnwrap(JSONSerialization.jsonObject(with: ownerBytes) as? [String: Any])
         let sources = try XCTUnwrap(owner["supportingSources"] as? [[String: Any]])
         XCTAssertEqual(sources.compactMap { $0["sourcePosition"] as? Int }, [0, 2])

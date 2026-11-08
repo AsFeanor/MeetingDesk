@@ -303,12 +303,12 @@ final class LocalActionAssessmentTests: XCTestCase {
         for _ in 0..<32 {
             XCTAssertEqual(try LocalSummaryService.personalNameCatalogPrompt(evidenceScope: scope), prompt)
         }
-        XCTAssertEqual(rows.count, 3)
-        XCTAssertEqual(rows.compactMap { $0["sourceAlias"] as? String }, ["s1", "s2", "s1"])
-        XCTAssertEqual(rows.compactMap { $0["text"] as? String }, ["Ay", "An unrelated source.", "şe will prepare it."])
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows.compactMap { $0["sourceAlias"] as? String }, ["s1", "s2"])
+        XCTAssertEqual(rows.compactMap { $0["text"] as? String }, ["Ayşe will prepare it.", "An unrelated source."])
         XCTAssertEqual(rows.filter { $0["sourceAlias"] as? String == "s1" }.compactMap { $0["text"] as? String }.joined(), "Ayşe will prepare it.")
         for row in rows {
-            XCTAssertEqual(Set(row.keys), ["sourceAlias", "text"])
+            XCTAssertEqual(Set(row.keys), ["sourceAlias", "text", "leadingWholeWordBoundary", "trailingWholeWordBoundary"])
             for forbidden in ["speaker", "speakerLabel", "providedSpeakerName", "start", "end", "sourcePosition"] {
                 XCTAssertNil(row[forbidden], "Name recognition must not receive channel labels or metadata as text names")
             }
