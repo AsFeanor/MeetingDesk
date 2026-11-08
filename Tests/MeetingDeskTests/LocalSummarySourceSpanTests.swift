@@ -140,8 +140,8 @@ final class LocalSummarySourceSpanTests: XCTestCase {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let scope = try LocalSummaryService.evidenceScope(sources: [entry("source-original", "Ali will prepare the report on Friday.")])
         XCTAssertThrowsError(try LocalSummaryService.parsePersonalNameCatalog(try generated(["s1": ["ali"]]), evidenceScope: scope),
-                            "Only task-clause alignment changed; names remain exact source quotes")
-        let presence = try LocalSummaryService.parseTimePresence(try generated(["sourceObservation": "The source states Friday.", "hasExplicitTaskTime": true]))
+                            "Task-clause case alignment does not relax literal personal-name spelling")
+        let presence = try LocalSummaryService.parseTimePresence(try generated(["hasExplicitTaskTime": true]))
         XCTAssertEqual(try LocalSummaryService.taskTimeValue(try generated(["taskTimePhrase": "FRIDAY"]), presence: presence), "FRIDAY",
                        "The isolated time parser preserves returned text; it does not perform source alignment")
     }

@@ -17,13 +17,19 @@ final class LocalActionAssessmentTests: XCTestCase {
             XCTAssertEqual(array["minItems"] as? Int, 0)
             XCTAssertEqual(array["maxItems"] as? Int, 12)
             let description = try XCTUnwrap(array["description"] as? String)
-            XCTAssertTrue(description.contains("REQUIRED even when its array is empty"))
+            XCTAssertTrue(description.contains("REQUIRED even when empty"))
             XCTAssertTrue(description.contains("Maximum 12 candidates across ALL source properties"))
+            XCTAssertTrue(description.contains("including proposed, cancelled/rejected or completed work"))
+            XCTAssertTrue(description.contains("do not decide eligibility"))
             let item = try resolve(try XCTUnwrap(array["items"] as? [String: Any]), in: schema)
             let properties = try objectFields(item, required: ["taskClause", "evidence"])
             let clause = try resolve(try XCTUnwrap(properties["taskClause"] as? [String: Any]), in: schema)
             XCTAssertEqual(clause["type"] as? String, "string")
             XCTAssertTrue(try XCTUnwrap(clause["description"] as? String).contains("EXACTLY VERBATIM"))
+            let clauseDescription = try XCTUnwrap(clause["description"] as? String)
+            XCTAssertTrue(clauseDescription.contains("complete object/purpose"))
+            XCTAssertTrue(clauseDescription.contains("proposal, decision, undertaking, cancellation, completion or negation words"))
+            XCTAssertTrue(clauseDescription.contains("Do not judge action eligibility here"))
             let evidence = try resolve(try XCTUnwrap(properties["evidence"] as? [String: Any]), in: schema)
             XCTAssertEqual(evidence["type"] as? String, "array")
             XCTAssertEqual(evidence["minItems"] as? Int, 1)
@@ -34,6 +40,30 @@ final class LocalActionAssessmentTests: XCTestCase {
                 XCTAssertNil(properties[forbidden])
             }
         }
+    }
+
+    func testMentionInventoryPreservesPositiveProposedCancelledCompletedAndSeparateFollowupClauses() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        let clauses = [
+            "We decided to replace the office lamps; nobody is assigned yet.",
+            "We could repaint the sign; nobody accepted that work.",
+            "We cancelled moving the cabinets; they will not be moved.",
+            "The shelf repair was completed yesterday.",
+            "The team agreed to tell the reception staff about the cancellation."
+        ]
+        let scope = try LocalSummaryService.evidenceScope(sources: clauses.enumerated().map {
+            .init(id: "mention-\($0.offset)", speaker: "A", start: Double($0.offset), end: Double($0.offset + 1), text: $0.element)
+        })
+        var wire: [String: Any] = [:]
+        for (index, alias) in scope.evidenceIDs.enumerated() {
+            wire[alias] = [["taskClause": clauses[index], "evidence": [alias]]]
+        }
+        let candidates = try LocalSummaryService.convertActionCandidates(try generated(wire), part: 2, evidenceScope: scope)
+        XCTAssertEqual(candidates.map(\.text), clauses, "Inventory decoding must retain negation and status qualifiers, not silently prefilter work mentions")
+        XCTAssertEqual(candidates.map(\.evidence), (0..<clauses.count).map { ["mention-\($0)"] })
+        XCTAssertEqual(candidates.map(\.id), (1...clauses.count).map { "local-2-action-\($0)" })
+        // These are candidates, not accepted actions. Existing closed commitment
+        // verdict tests remain the later eligibility boundary.
     }
 
     func testInventorySchemaRejectsAnInvalidOrUnboundedEvidenceDomain() throws {
@@ -236,6 +266,31 @@ final class LocalActionAssessmentTests: XCTestCase {
         }
     }
 
+    func testLocalizedCommitmentObservationsUseTheSameClosedStateCodesWithoutLocaleFallback() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        let observations = [
+            ("agreed_or_committed_future_task", "İş açıkça kararlaştırıldı; sorumlu veya tarih belirtilmedi.", "The work was explicitly agreed; no person or time was stated."),
+            ("only_proposed_or_unaccepted", "Yalnız öneri var; işi yapma kararı veya kabulü yok.", "Only a proposal is reported; no decision or acceptance to perform it exists."),
+            ("cancelled_or_rejected", "Bu işi yapma kararı iptal edildi; iş yapılmayacak.", "The work was cancelled and will not happen."),
+            ("already_completed", "Kaynak, işin zaten tamamlandığını bildiriyor.", "The source reports the work already completed."),
+            ("not_a_future_execution_task", "Yalnız durum veya tercih üzerinde anlaşma var; somut uygulama işi bildirilmedi.", "Only a state or preference agreement is reported; no concrete execution work is stated.")
+        ]
+        for (state, turkish, english) in observations {
+            for observation in [turkish, english] {
+                let result = try LocalSummaryService.commitmentAllowsAction(try generated([
+                    "sourceObservation": observation, "commitmentState": state
+                ]))
+                XCTAssertEqual(result, state == "agreed_or_committed_future_task",
+                               "Instruction/observation language must not change the only positive wire state")
+            }
+        }
+        for localizedAlias in ["kararlaştırıldı", "üstlenildi", "öneri", "iptal_edildi", "tamamlandı", "durum_kararı"] {
+            XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated([
+                "sourceObservation": "Türkçe bir olgusal gözlem.", "commitmentState": localizedAlias
+            ])), "Localized instructions never permit translated enum aliases or a default false result")
+        }
+    }
+
     func testCommitmentParserRejectsMissingExtraWrongTypedUnknownAndObsoleteWireWithoutDefaults() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         for invalid in [nil, NSNull(), 42, true, [] as [String], [:] as [String: String]] as [Any?] {
@@ -269,6 +324,60 @@ final class LocalActionAssessmentTests: XCTestCase {
         }
         for json in ["null", "[]", "true", "42", "\"pending\"", "\"agreed_or_committed_future_task\""] {
             XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(GeneratedContent(json: json)))
+        }
+    }
+
+    func testWorkNatureSchemaKeepsOnlyTwoClosedStringCodesInBothLanguages() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        for language in ["English", "Turkish"] {
+            let schema = try jsonObject(LocalSummaryService.workNatureSchema(language: language))
+            let fields = try objectFields(schema, required: ["workKind"])
+            XCTAssertEqual(schema["x-order"] as? [String], ["workKind"])
+            let kind = try resolve(try XCTUnwrap(fields["workKind"] as? [String: Any]), in: schema)
+            XCTAssertEqual(try finiteStrings(kind, in: schema), ["concrete_execution", "state_preference_or_discussion"])
+            let description = try XCTUnwrap(kind["description"] as? String)
+            if language == "Turkish" {
+                XCTAssertTrue(description.contains("Öneri/kabul/iptal/tamamlanma durumundan bağımsız"))
+                XCTAssertTrue(description.contains("sorumlu/tarih gerekmez"))
+                XCTAssertTrue(description.contains("gerçek bakım/kontrol"))
+            } else {
+                XCTAssertTrue(description.contains("independent of proposed/accepted/cancelled/completed status"))
+                XCTAssertTrue(description.contains("missing owner/date"))
+                XCTAssertTrue(description.contains("actual maintenance/checking"))
+            }
+        }
+    }
+
+    func testWorkNatureDecoderRejectsMalformedOrUnknownResponsesWithoutDefaultingToAChoice() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        XCTAssertTrue(try LocalSummaryService.workNatureIsExecution(try generated(["workKind": "concrete_execution"])))
+        XCTAssertFalse(try LocalSummaryService.workNatureIsExecution(try generated(["workKind": "state_preference_or_discussion"])))
+        for invalid in [nil, NSNull(), true, false, 0, 1, [], [:], "", "execution", "state", "pending", "agreed_or_committed_future_task", "somut_is", "Concrete_execution", " concrete_execution", "concrete_execution "] as [Any?] {
+            var wire: [String: Any] = [:]; wire["workKind"] = invalid
+            XCTAssertThrowsError(try LocalSummaryService.workNatureIsExecution(try generated(wire)))
+        }
+        for field in ["sourceObservation", "commitmentState", "status", "personChoice", "hasExplicitTaskTime", "taskTimePhrase", "unexpected"] {
+            for extra in [NSNull(), "", true, "not permitted"] as [Any] {
+                XCTAssertThrowsError(try LocalSummaryService.workNatureIsExecution(try generated([
+                    "workKind": "concrete_execution", field: extra
+                ])), field)
+            }
+        }
+        for json in ["null", "[]", "true", "42", "\"concrete_execution\""] {
+            XCTAssertThrowsError(try LocalSummaryService.workNatureIsExecution(GeneratedContent(json: json)))
+        }
+    }
+
+    func testConcreteWorkNatureDoesNotReplaceTheIndependentFiveStateCommitmentContract() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        let natureOnly = try generated(["workKind": "concrete_execution"])
+        XCTAssertTrue(try LocalSummaryService.workNatureIsExecution(natureOnly))
+        XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(natureOnly))
+        for state in ["agreed_or_committed_future_task", "only_proposed_or_unaccepted", "cancelled_or_rejected", "already_completed", "not_a_future_execution_task"] {
+            let stateOnly = try generated(commitment(state))
+            XCTAssertEqual(try LocalSummaryService.commitmentAllowsAction(stateOnly), state == "agreed_or_committed_future_task")
+            XCTAssertThrowsError(try LocalSummaryService.workNatureIsExecution(stateOnly),
+                                "Work state cannot substitute for task nature; no source, person or date is inferred")
         }
     }
 
@@ -474,16 +583,27 @@ final class LocalActionAssessmentTests: XCTestCase {
         }
     }
 
-    func testTimePresenceSchemaAndParserRequireFactualObservationAndExactBooleanWithoutDefaults() throws {
+    func testTimePresenceSchemaAndParserRequireOnlyAnExactBooleanWithoutDefaultsOrObservation() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
-        let schema = try jsonObject(LocalSummaryService.timePresenceSchema())
-        let fields = try objectFields(schema, required: ["sourceObservation", "hasExplicitTaskTime"])
-        XCTAssertEqual(schema["x-order"] as? [String], ["sourceObservation", "hasExplicitTaskTime"])
-        let bool = try resolve(try XCTUnwrap(fields["hasExplicitTaskTime"] as? [String: Any]), in: schema)
-        XCTAssertEqual(try booleanDomain(bool, in: schema), [false, true])
-        XCTAssertThrowsError(try LocalSummaryService.parseTimePresence(try generated([
-            "sourceObservation": "The source reports a time.", "hasTemporalDeadline": true
-        ])), "The former deadline-only flag is not a valid compatibility alias")
+        for language in ["English", "Turkish"] {
+            let schema = try jsonObject(LocalSummaryService.timePresenceSchema(language: language))
+            let fields = try objectFields(schema, required: ["hasExplicitTaskTime"])
+            XCTAssertEqual(schema["x-order"] as? [String], ["hasExplicitTaskTime"])
+            let bool = try resolve(try XCTUnwrap(fields["hasExplicitTaskTime"] as? [String: Any]), in: schema)
+            XCTAssertEqual(try booleanDomain(bool, in: schema), [false, true])
+            let description = try XCTUnwrap(bool["description"] as? String)
+            if language == "Turkish" {
+                XCTAssertTrue(description.contains("olaydan önce/sonra"))
+                XCTAssertTrue(description.contains("Kesin tarih gerekmez"))
+                XCTAssertTrue(description.contains("Ölçüm/konu süresi, zaman yokluğu"))
+            } else {
+                XCTAssertTrue(description.contains("before/after-event timing"))
+                XCTAssertTrue(description.contains("No precise date required"))
+                XCTAssertTrue(description.contains("Measurements/subject durations, absence"))
+            }
+        }
+        XCTAssertThrowsError(try LocalSummaryService.parseTimePresence(try generated(["hasTemporalDeadline": true])),
+                             "The former deadline flag is not a compatibility alias")
         for json in ["null", "[]", "true", "42", "\"false\""] {
             XCTAssertThrowsError(try LocalSummaryService.parseTimePresence(GeneratedContent(json: json)))
         }
@@ -494,11 +614,12 @@ final class LocalActionAssessmentTests: XCTestCase {
                 var wire = valid; wire["hasExplicitTaskTime"] = invalid
                 XCTAssertThrowsError(try LocalSummaryService.parseTimePresence(try generated(wire)))
             }
-            for invalid in [nil, NSNull(), true, 1, [], [:], "", " \t\n"] as [Any?] {
-                var wire = valid; wire["sourceObservation"] = invalid
-                XCTAssertThrowsError(try LocalSummaryService.parseTimePresence(try generated(wire)))
+            for extra in [NSNull(), true, 1, [], [:], "", "A factual observation."] as [Any] {
+                var oldWire = valid; oldWire["sourceObservation"] = extra
+                XCTAssertThrowsError(try LocalSummaryService.parseTimePresence(try generated(oldWire)),
+                                     "The previous observation-and-flag shape is forbidden, not ignored")
             }
-            for field in ["responsibleIdentityKind", "hasResponsiblePersonName", "personChoice", "taskTimePhrase", "hasTemporalDeadline", "deadlinePhrase", "commitmentState", "unexpected"] {
+            for field in ["responsibleIdentityKind", "hasResponsiblePersonName", "personChoice", "taskTimePhrase", "hasTemporalDeadline", "deadlinePhrase", "commitmentState", "workKind", "unexpected"] {
                 var wire = valid; wire[field] = "not permitted"
                 XCTAssertThrowsError(try LocalSummaryService.parseTimePresence(try generated(wire)))
             }
@@ -752,7 +873,7 @@ final class LocalActionAssessmentTests: XCTestCase {
         ["sourceObservation": "The cited source identifies the responsible person or records no named assignment.", "personChoice": id]
     }
     private func observedTime(_ present: Bool) -> [String: Any] {
-        ["sourceObservation": "The cited source reports the task's timing or its absence.", "hasExplicitTaskTime": present]
+        ["hasExplicitTaskTime": present]
     }
     @available(macOS 26.0, *)
     private func selectedAction(candidate: LocalSummaryService.ActionCandidate, scope: LocalSummaryService.EvidenceScope,
