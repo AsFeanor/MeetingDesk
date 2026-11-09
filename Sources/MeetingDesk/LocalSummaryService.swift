@@ -230,7 +230,7 @@ struct LocalSummaryService {
                     options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 1_000))
                 try Task.checkCancellation()
                 let candidates = try Self.convertActionCandidates(actionResponse.content, part: index + 1,
-                    evidenceScope: scope, recoverMissingOwnSource: true)
+                    evidenceScope: scope, allowParaphrasedTasks: true)
                 var actions: [ActionItem] = []
                 for candidate in candidates {
                     try Task.checkCancellation()
@@ -767,7 +767,7 @@ struct LocalSummaryService {
 
     @available(macOS 26.0, *)
     static func convertActionCandidates(_ generated: GeneratedContent, part: Int,
-                                        evidenceScope: EvidenceScope, recoverMissingOwnSource: Bool = false) throws -> [ActionCandidate] {
+                                        evidenceScope: EvidenceScope, allowParaphrasedTasks: Bool = false) throws -> [ActionCandidate] {
         let wire: InventoryWire
         do { wire = try JSONDecoder().decode(InventoryWire.self, from: Data(generated.jsonString.utf8)) }
         catch {
@@ -788,24 +788,22 @@ struct LocalSummaryService {
                     throw MeetingError.message("Yerel aksiyonun görev alıntısı veya kaynak bağlantısı doğrulanamadı. Notlar kaydedilmedi; transkript korunuyor.")
                 }
                 let sourceClause: String
-                if recoverMissingOwnSource {
+                if allowParaphrasedTasks {
                     guard item.evidence.allSatisfy(evidenceScope.evidenceIDs.contains) else {
                         throw MeetingError.message("Yerel aksiyonun görev alıntısı veya kaynak bağlantısı doğrulanamadı. Notlar kaydedilmedi; transkript korunuyor.")
                     }
                     switch recoveryLiteralMatch(item.taskClause, owningAlias: owningAlias, evidenceScope: evidenceScope) {
                     case .matched(let text): sourceClause = text
                     case .missingOwnSourceSpan:
-                        let ownBytes = evidenceScope.sources.reduce(into: Data()) { data, source in
-                            if source.id == owningAlias { data.append(contentsOf: source.text.utf8) }
-                        }
-                        let original = String(decoding: ownBytes, as: UTF8.self)
-                        guard items.count == 1, ownBytes.count <= 4_800,
-                              !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        let ownText = evidenceScope.sources.filter { $0.id == owningAlias }.map(\.text).joined()
+                        guard item.taskClause.utf8.count <= 4_800,
+                              !ownText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                             throw MeetingError.message("Yerel aksiyonun görev alıntısı kaynakta tek bir kesin konumla eşleşmedi. Notlar kaydedilmedi; transkript korunuyor.")
                         }
-                        // Preserve only original source bytes. Existing work,
-                        // commitment, owner, time and final checks still apply.
-                        sourceClause = original
+                        // Task text describes the cited work; it is not a claim
+                        // of verbatim quotation. The existing work/commitment
+                        // assessments must still support this same description.
+                        sourceClause = item.taskClause
                     case .invalid, .ambiguous, .foreignSource:
                         throw MeetingError.message("Yerel aksiyonun görev alıntısı kaynakta tek bir kesin konumla eşleşmedi. Notlar kaydedilmedi; transkript korunuyor.")
                     }
