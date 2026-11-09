@@ -685,39 +685,6 @@ struct LocalSummaryService {
         }
     }
 
-    private enum TaskClauseRecoveryMatch {
-        case matched(String), invalid, ambiguous, foreignSource, missingOwnSourceSpan
-    }
-
-    private static func recoveryLiteralMatch(_ clause: String, owningAlias: String,
-                                               evidenceScope: EvidenceScope) -> TaskClauseRecoveryMatch {
-        guard !clause.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              evidenceScope.evidenceIDs.contains(owningAlias) else { return .invalid }
-        let sourceBytes = evidenceScope.sources.reduce(into: Data()) { data, source in
-            if source.id == owningAlias { data.append(contentsOf: source.text.utf8) }
-        }
-        // Exact byte matches retain precedence, including repeated exact spans.
-        if sourceBytes.range(of: Data(clause.utf8)) != nil { return .matched(clause) }
-        let source = String(decoding: sourceBytes, as: UTF8.self)
-        let boundaries = Set(source.indices).union([source.endIndex])
-        var uniqueMatch: Range<String.Index>?
-        for start in source.indices {
-            guard let range = source.range(of: clause, options: [.anchored, .caseInsensitive, .literal],
-                                           range: start..<source.endIndex, locale: nil),
-                  range.lowerBound == start, boundaries.contains(range.upperBound),
-                  differsOnlyByDirectDefaultCase(String(source[range]), clause) else { continue }
-            guard uniqueMatch == nil else { return .ambiguous }
-            uniqueMatch = range
-        }
-        if let range = uniqueMatch { return .matched(String(source[range])) }
-        var otherBytes: [String: Data] = [:]
-        for entry in evidenceScope.sources where entry.id != owningAlias && evidenceScope.evidenceIDs.contains(entry.id) {
-            otherBytes[entry.id, default: Data()].append(contentsOf: entry.text.utf8)
-        }
-        if otherBytes.values.contains(where: { $0.range(of: Data(clause.utf8)) != nil }) { return .foreignSource }
-        return .missingOwnSourceSpan
-    }
-
     /// Preserve exact matches. A case-only mismatch may resolve only to one
     /// original Character-boundary span under the owning source alias.
     /// The default Foundation comparator matches the observed diagnostic;
@@ -792,24 +759,19 @@ struct LocalSummaryService {
                 }
                 let sourceClause: String
                 if allowParaphrasedTasks {
-                    guard item.evidence.allSatisfy(evidenceScope.evidenceIDs.contains) else {
-                        throw MeetingError.message("Yerel aksiyonun görev alıntısı veya kaynak bağlantısı doğrulanamadı. Notlar kaydedilmedi; transkript korunuyor.")
+                    let supportingText = evidenceScope.sources.reduce(into: [String: String]()) { text, source in
+                        text[source.id, default: ""] += source.text
                     }
-                    switch recoveryLiteralMatch(item.taskClause, owningAlias: owningAlias, evidenceScope: evidenceScope) {
-                    case .matched(let text): sourceClause = text
-                    case .missingOwnSourceSpan:
-                        let ownText = evidenceScope.sources.filter { $0.id == owningAlias }.map(\.text).joined()
-                        guard item.taskClause.utf8.count <= 4_800,
-                              !ownText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                            throw MeetingError.message("Yerel aksiyonun görev alıntısı kaynakta tek bir kesin konumla eşleşmedi. Notlar kaydedilmedi; transkript korunuyor.")
-                        }
-                        // Task text describes the cited work; it is not a claim
-                        // of verbatim quotation. The existing work/commitment
-                        // assessments must still support this same description.
-                        sourceClause = item.taskClause
-                    case .invalid, .ambiguous, .foreignSource:
-                        throw MeetingError.message("Yerel aksiyonun görev alıntısı kaynakta tek bir kesin konumla eşleşmedi. Notlar kaydedilmedi; transkript korunuyor.")
+                    guard item.taskClause.utf8.count <= 4_800,
+                          item.evidence.allSatisfy({ evidenceScope.evidenceIDs.contains($0)
+                              && !(supportingText[$0]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }) else {
+                        throw MeetingError.message("Yerel aksiyonun görev açıklaması veya kaynak bağlantısı doğrulanamadı. Notlar kaydedilmedi; transkript korunuyor.")
                     }
+                    // Descriptions need semantic support, not physical quotation
+                    // alignment. Original spelling is a best-effort improvement;
+                    // the unchanged later work/commitment checks remain required.
+                    sourceClause = (try? canonicalSourceTaskClause(item.taskClause, owningAlias: owningAlias,
+                        evidenceScope: evidenceScope)) ?? item.taskClause
                 } else {
                     sourceClause = try canonicalSourceTaskClause(item.taskClause, owningAlias: owningAlias, evidenceScope: evidenceScope)
                 }

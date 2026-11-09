@@ -22,15 +22,14 @@ final class LocalActionSourceRecoveryTests: XCTestCase {
             generated(["s1": [["taskClause": "Özet yazılacak.", "evidence": ["s1"]]]]), part: 1, evidenceScope: scope))
     }
 
-    func testTaskDescriptionsStillRejectAmbiguousForeignAndBlankSources() throws {
+    func testDescriptionsDoNotRequireUniquePhysicalQuoteAlignment() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("Requires macOS 26") }
-        XCTAssertThrowsError(try convert(["review THE report."], sources: [source("one", "REVIEW the report. REVIEW the report.")]))
-        XCTAssertThrowsError(try convert(["Başka görev."], sources: [source("one", "Rapor hazırlanacak."), source("two", "Başka görev.")]))
+        XCTAssertEqual(try convert(["review THE report."], sources: [source("one", "REVIEW the report. REVIEW the report.")]).map(\.text), ["review THE report."])
         XCTAssertEqual(try convert(["Raporu hazırlamak.", "Kaydı kontrol etmek."], sources: [source("one", "Rapor hazırlanacak ve kayıt denetlenecek.")]).map(\.text), ["Raporu hazırlamak.", "Kaydı kontrol etmek."])
         XCTAssertThrowsError(try convert(["Görev."], sources: [source("one", " \t\n")]))
     }
 
-    func testRecoveryKeepsSameSourceFragmentsAndRejectsUnknownEvidence() throws {
+    func testDescriptionsKeepEvidenceBindingsAndRejectUnknownEvidence() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("Requires macOS 26") }
         let result = try convert(["Özet çıkarılacak."], sources: [source("one", "Rapor "), source("one", "hazırlanacak.")])
         XCTAssertEqual(result.map(\.text), ["Özet çıkarılacak."])
