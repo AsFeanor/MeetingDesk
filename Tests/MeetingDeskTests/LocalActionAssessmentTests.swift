@@ -337,15 +337,17 @@ final class LocalActionAssessmentTests: XCTestCase {
             XCTAssertEqual(try finiteStrings(kind, in: schema), ["operation_specified", "state_preference_or_discussion"])
             let description = try XCTUnwrap(kind["description"] as? String)
             if language == "Turkish" {
-                XCTAssertTrue(description.contains("karar/öneri/üstlenme/iptal/tamamlanma cümlesinin içinde"))
-                XCTAssertTrue(description.contains("başladığı/yapıldığı/bittiği, gelecek zaman eki veya kabul kesinliği aranmaz"))
-                XCTAssertTrue(description.contains("Sorumlu/tarih gerekmez"))
-                XCTAssertTrue(description.contains("somut işlem/çıktı/inceleme/bakım-kontrol içeriği"))
+                XCTAssertTrue(description.contains("anlaşma tek başına ayrıca bir müdahale değildir"))
+                XCTAssertTrue(description.contains("aynı karar/öneri/üstlenme/iptal/tamamlanma cümlesinde"))
+                XCTAssertTrue(description.contains("Yapılmış iş, gelecek zaman eki, kabul kesinliği, sorumlu veya tarih gerekmez"))
+                XCTAssertTrue(description.contains("Korunacak sonuçtan işlem türetme"))
+                XCTAssertTrue(description.contains("tarif edilmiş müdahale/çıktı/inceleme/bakım-kontrol işlemi"))
             } else {
-                XCTAssertTrue(description.contains("inside a decision/proposal/undertaking/cancellation/completion statement"))
-                XCTAssertTrue(description.contains("No start/performance/completion evidence, future-tense form or acceptance certainty required"))
-                XCTAssertTrue(description.contains("Owner/date need not be stated"))
-                XCTAssertTrue(description.contains("concrete operation/deliverable/investigation/maintenance content"))
+                XCTAssertTrue(description.contains("agreement alone is not a separate intervention"))
+                XCTAssertTrue(description.contains("within the same decision/proposal/undertaking/cancellation/completion statement"))
+                XCTAssertTrue(description.contains("Performed work, future tense, acceptance certainty, owner/date are not required"))
+                XCTAssertTrue(description.contains("Infer no procedure from a retained outcome"))
+                XCTAssertTrue(description.contains("specified intervention/deliverable/investigation/maintenance-checking activity"))
             }
         }
     }

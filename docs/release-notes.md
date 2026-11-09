@@ -2,10 +2,14 @@
 
 Yerel özetlerde takip işlerinin aksiyon listesine aktarılması iyileştirildi.
 
-- Aksiyonlar toplantı özetinden ayrı incelenir; her aday işin açıkça kararlaştırıldığı veya üstlenildiği kontrol edilir.
-- Sorumlu kişi ve teslim ifadesi ayrıca kontrol edilir. Belirtilmeyen alanlar boş kalır; aksiyon bu yüzden elenmez.
-- Öneri, iptal ve tamamlanma açıklamaları kaynak bölümü içindeki aksiyon kontrolünde dikkate alınır.
-- Uzun toplantılar bölüm bölüm işlenir. Her yerel model isteği kendi boyut sınırıyla kontrol edilir. Kaynak bağlantıları, toplantı şablonları ve mevcut arşiv biçimi korunur.
+- Kararlaştırılan veya üstlenilen işler ayrıca incelenir. Sorumlu ya da tarih belirtilmemesi, aksiyonun tek başına elenmesine neden olmaz.
+- Öneriler, durum/tercih kararları ve iptal/tamamlanma açıklamaları ayrı kontrol edilir.
+- Sorumlu adları kaynak metinden veya verdiğiniz konuşmacı adlarından seçilir; anonim ses kanalları kişi adı sayılmaz.
+- Tarih ifadeleri, işin ne zaman yapılacağını veya tamamlanacağını anlatıp anlatmadıkları kontrol edilerek aktarılır; ölçüm konusu ve iş açıklaması ayrıca ayırt edilir. Tarih çıkarımına kayıt başlangıç/bitiş bilgileri gönderilmez.
+- Özette planlanan işlerin tamamlanmış gibi anlatılmasını ve konuşmada geçmeyen plan/çıktıların eklenmesini önlemeye yönelik yönergeler güçlendirildi.
+- Uzun toplantılar bölüm bölüm işlenir. Kaynak bağlantıları, toplantı şablonları ve mevcut arşiv biçimi korunur.
+
+Aksiyon alanları kaynak metinle ayrıca kontrol edilir. Serbest metin özeti, kişi adlarını, zamanları veya işin durumunu yanlış aktarabilir ve doğru aksiyon listesiyle çelişebilir.
 
 Güncellemeden sonra aynı toplantıyı açıp seçtiğiniz şablonla **Özeti yenile** kullanın. Transkripti yeniden oluşturmanız gerekmez. Mevcut transkript ve notlar aynı arşivdedir.
 
