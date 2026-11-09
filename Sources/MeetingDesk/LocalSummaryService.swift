@@ -214,7 +214,8 @@ struct LocalSummaryService {
                 let nameResponse = try await nameSession.respond(to: namePrompt, schema: nameSchema,
                     options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 1_000))
                 try Task.checkCancellation()
-                let catalog = try await Self.parsePersonalNameCatalogWithBoundaryRetry(nameResponse.content, evidenceScope: scope) {
+                let catalog = try await Self.parsePersonalNameCatalogWithBoundaryRetry(nameResponse.content,
+                    evidenceScope: scope, discardUnsupportedNames: true) {
                     try Task.checkCancellation()
                     let retrySession = LanguageModelSession(model: model, instructions: nameRetryInstructions)
                     let retryResponse = try await retrySession.respond(to: namePrompt, schema: nameSchema,
@@ -886,10 +887,33 @@ struct LocalSummaryService {
     }
 
     @available(macOS 26.0, *)
-    static func parsePersonalNameCatalog(_ generated: GeneratedContent, evidenceScope: EvidenceScope) throws -> PersonalNameCatalog {
-        let names: [String: [String]]
+    static func parsePersonalNameCatalog(_ generated: GeneratedContent, evidenceScope: EvidenceScope,
+                                         discardUnsupportedNames: Bool = false) throws -> PersonalNameCatalog {
+        var names: [String: [String]]
         do { names = try JSONDecoder().decode([String: [String]].self, from: Data(generated.jsonString.utf8)) }
         catch { throw MeetingError.message("Yerel kişi adı kataloğu geçersiz bir yanıt döndürdü. Transkript korunuyor.") }
+        if discardUnsupportedNames {
+            let sources = personalNameCatalogInput(evidenceScope: evidenceScope)
+            guard Set(names.keys) == Set(evidenceScope.evidenceIDs),
+                  Set(sources.map(\.sourceAlias)) == Set(evidenceScope.evidenceIDs) else {
+                throw MeetingError.message("Yerel kişi adı kataloğu her kaynak için tam bir sonuç döndürmedi. Transkript korunuyor.")
+            }
+            // Validate the ENTIRE map and all limits before discarding values.
+            // Missing/foreign keys, malformed types or oversized arrays still fail.
+            for source in sources {
+                guard let values = names[source.sourceAlias], values.count <= 6 else {
+                    throw MeetingError.message("Yerel kişi adı kataloğunun alanları geçersiz. Transkript korunuyor.")
+                }
+            }
+            for source in sources {
+                let bytes = Data(source.text.utf8)
+                names[source.sourceAlias] = names[source.sourceAlias]!.filter { name in
+                    !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && bytes.range(of: Data(name.utf8)) != nil
+                        && containsWholeName(name, in: source)
+                }
+            }
+        }
         try validatePersonalNameMap(names, scope: evidenceScope)
         return PersonalNameCatalog(namesByAlias: names)
     }
@@ -898,14 +922,15 @@ struct LocalSummaryService {
     /// Invalid fields, aliases, types or nonliteral names never reach retry.
     @available(macOS 26.0, *)
     static func parsePersonalNameCatalogWithBoundaryRetry(_ initial: GeneratedContent, evidenceScope: EvidenceScope,
+                                                         discardUnsupportedNames: Bool = false,
                                                          retry: () async throws -> GeneratedContent) async throws -> PersonalNameCatalog {
         try Task.checkCancellation()
-        do { return try parsePersonalNameCatalog(initial, evidenceScope: evidenceScope) }
+        do { return try parsePersonalNameCatalog(initial, evidenceScope: evidenceScope, discardUnsupportedNames: discardUnsupportedNames) }
         catch PersonalNameCatalogValidationError.wordBoundary {
             try Task.checkCancellation()
             let replacement = try await retry()
             try Task.checkCancellation()
-            do { return try parsePersonalNameCatalog(replacement, evidenceScope: evidenceScope) }
+            do { return try parsePersonalNameCatalog(replacement, evidenceScope: evidenceScope, discardUnsupportedNames: discardUnsupportedNames) }
             catch PersonalNameCatalogValidationError.wordBoundary {
                 throw MeetingError.message("Yerel kişi adının tam sözcük sınırları doğrulanamadı. Notlar kaydedilmedi; transkript korunuyor.")
             }
