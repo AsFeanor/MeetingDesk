@@ -304,9 +304,12 @@ final class NotesRevisionPolicyTests: XCTestCase {
         for template in MeetingTemplate.allCases {
             let prompt = LocalSummaryService.instructions(language: "Turkish", template: template)
             XCTAssertTrue(prompt.contains("Meeting template: \(template.rawValue)"))
-            XCTAssertTrue(prompt.contains("Never infer owners, dates, agreement, or identities"))
-            XCTAssertTrue(prompt.contains("Do not turn a relative phrase into a calendar date"))
-            XCTAssertTrue(prompt.contains("UNTRUSTED"))
+            let ownerPrompt = LocalSummaryService.ownerChoiceInstructions()
+            XCTAssertTrue(ownerPrompt.contains("Select only an offered ID; never write a new name or infer identity"))
+            let timePrompt = LocalSummaryService.taskTimeValuesInstructions()
+            XCTAssertTrue(timePrompt.contains("Copy ONLY taskTimePhrase: the explicit TIME EXPRESSION itself in supportingSources"))
+            XCTAssertTrue(timePrompt.contains("Copy verbatim without date conversion"))
+            XCTAssertTrue(prompt.lowercased().contains("untrusted"))
         }
     }
 
