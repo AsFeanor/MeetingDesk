@@ -253,6 +253,8 @@ struct LocalSummaryService {
                 let scopedText = sources.reduce(into: [String: String]()) { result, source in
                     result[source.id, default: ""] += source.text
                 }
+                notes = try Self.removingUnsupportedActionMetadata(notes, meeting: meeting,
+                    allowedEvidence: Set(sources.map(\.id)), scopedText: scopedText)
                 try Self.validate(notes: notes, meeting: meeting, allowedEvidence: Set(sources.map(\.id)), scopedText: scopedText, requireTemplateSections: true)
                 generated.append(notes)
             } catch is CancellationError { throw CancellationError() }
@@ -262,7 +264,8 @@ struct LocalSummaryService {
                 throw MeetingError.message("Mac’teki yerel model \(index + 1). bölümün özetini tamamlayamadı. Eksik notlar kaydedilmedi; transkript korunuyor. Apple Intelligence’ın hazır olduğunu kontrol edip tekrar deneyin.")
             }
         }
-        let notes = Self.combine(generated, sources: chunks, english: english)
+        var notes = Self.combine(generated, sources: chunks, english: english)
+        notes = try Self.removingUnsupportedActionMetadata(notes, meeting: meeting)
         try Self.validate(notes: notes, meeting: meeting, requireTemplateSections: true)
         return notes
     }
@@ -1016,7 +1019,7 @@ struct LocalSummaryService {
     }
 
     @available(macOS 26.0, *)
-    static func taskTimeValue(_ generated: GeneratedContent?, presence: TimePresence) throws -> String? {
+    static func taskTimeValue(_ generated: GeneratedContent?, presence: TimePresence, allowBlankPhrase: Bool = false) throws -> String? {
         guard presence.hasExplicitTaskTime else {
             guard generated == nil else { throw MeetingError.message("İş zamanı istenmediği halde yanıt üretildi. Transkript korunuyor.") }
             return nil
@@ -1026,10 +1029,71 @@ struct LocalSummaryService {
         do { values = try JSONDecoder().decode([String: String].self, from: Data(generated.jsonString.utf8)) }
         catch { throw MeetingError.message("Yerel iş zamanı değeri geçersiz. Transkript korunuyor.") }
         guard Set(values.keys) == ["taskTimePhrase"], let phrase = values["taskTimePhrase"],
-              !phrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+              allowBlankPhrase || !phrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw MeetingError.message("Yerel iş zamanı istenen alanla eşleşmiyor. Transkript korunuyor.")
         }
         return phrase
+    }
+
+    /// Optional production metadata may be absent; source/domain failures are
+    /// still errors. Strict proposal APIs below retain their original behavior.
+    static func optionalValidatedTaskTimeProposal(_ phrase: String, input: TaskTimeInput) throws -> ValidatedTaskTimeProposal? {
+        let cited = Set(input.candidate.evidence)
+        try validateActionCandidates([input.candidate], allowedEvidence: cited)
+        guard !cited.isEmpty, Set(input.supportingSources.map(\.id)) == cited else {
+            throw MeetingError.message("Yerel iş zamanı önerisinin kaynak kapsamı geçersiz. Transkript korunuyor.")
+        }
+        let byID = input.supportingSources.reduce(into: [String: String]()) { result, source in
+            result[source.id, default: ""] += source.text
+        }
+        let text = try input.candidate.evidence.map { id in
+            guard let value = byID[id] else {
+                throw MeetingError.message("Yerel iş zamanı önerisinin kaynak kapsamı geçersiz. Transkript korunuyor.")
+            }
+            return value
+        }.joined(separator: " ")
+        guard actionDueIsSupported(phrase, text: text) else { return nil }
+        return try validatedTaskTimeProposal(phrase, input: input)
+    }
+
+    private static func actionDueIsSupported(_ due: String, text: String) -> Bool {
+        !due.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && text.range(of: due, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+    }
+
+    private static func actionOwnerIsSupported(_ owner: String, text: String, sources: [TranscriptSegment], meeting: Meeting) -> Bool {
+        let nonempty = !owner.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let pattern = "(?<![\\p{L}\\p{N}])" + NSRegularExpression.escapedPattern(for: owner) + "(?![\\p{L}\\p{N}])"
+        let named = nonempty && text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        let provided = nonempty && sources.contains { meeting.speakerNames[$0.speaker] == owner }
+        let anonymousLabel = sources.contains { $0.speaker == owner && meeting.speakerNames[$0.speaker] == nil }
+        return (named || provided) && !anonymousLabel
+    }
+
+    /// Only unsupported optional fields become absence. Task identity, text and
+    /// evidence remain unchanged and must still pass the strict final validator.
+    static func removingUnsupportedActionMetadata(_ notes: MeetingNotes, meeting: Meeting,
+                                                  allowedEvidence: Set<String>? = nil, scopedText: [String: String]? = nil) throws -> MeetingNotes {
+        let ids = Set(meeting.segments.map(\.id))
+        guard ids.count == meeting.segments.count else { throw MeetingError.message("Transkript kaynak kimlikleri yineleniyor.") }
+        let segments = Dictionary(uniqueKeysWithValues: meeting.segments.map { ($0.id, $0) })
+        let allowed = allowedEvidence ?? ids
+        var actionIDs = Set<String>()
+        var result = notes
+        result.actions = try notes.actions.map { action in
+            guard !action.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, actionIDs.insert(action.id).inserted,
+                  !action.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !action.evidence.isEmpty,
+                  action.evidence.allSatisfy({ allowed.contains($0) && segments[$0] != nil }) else {
+                throw MeetingError.message("Yerel özetin kaynak bağlantıları doğrulanamadı. Desteksiz notlar kaydedilmedi; transkript korunuyor.")
+            }
+            let sources = action.evidence.compactMap { segments[$0] }
+            let text = sources.map { scopedText?[$0.id] ?? $0.text }.joined(separator: " ")
+            var item = action
+            if let due = item.due, !actionDueIsSupported(due, text: text) { item.due = nil }
+            if let owner = item.owner, !actionOwnerIsSupported(owner, text: text, sources: sources, meeting: meeting) { item.owner = nil }
+            return item
+        }
+        return result
     }
 
     private static func validateTaskTimeProposalSourceSupport(_ phrase: String, input: TaskTimeInput) throws {
@@ -1214,31 +1278,34 @@ struct LocalSummaryService {
             let valuesResponse = try await valuesSession.respond(to: valuesPrompt, schema: valuesSchema,
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 512))
             try Task.checkCancellation()
-            guard let proposedPhrase = try taskTimeValue(valuesResponse.content, presence: time) else {
+            guard let proposedPhrase = try taskTimeValue(valuesResponse.content, presence: time, allowBlankPhrase: true) else {
                 throw MeetingError.message("Yerel iş zamanı yanıtı eksik. Transkript korunuyor.")
             }
-            let timeProposal = try validatedTaskTimeProposal(proposedPhrase, input: timeInput)
-            try Task.checkCancellation()
-            let relationInstructions = taskTimeRelationInstructions(language: language)
-            let relationSchema = try taskTimeRelationSchema(language: language)
-            let relationData = try modelInputData(timeProposal)
-            let relationQuestion = language == "Turkish"
-                ? "Tam atıflı kaynaklara göre proposedTaskTimePhrase ifadesinin yalnız bu aday işteki rolünü sınıflandır; yalnız timeRelation döndür.\n"
-                : "Classify proposedTaskTimePhrase's role for this task from the complete cited sources; return only timeRelation.\n"
-            let relationPrompt = relationQuestion + String(decoding: relationData, as: UTF8.self)
-            let relationFits = try await actionRequestFits(model: model, instructions: relationInstructions, schema: relationSchema,
-                prompt: relationPrompt, responseTokens: 128, data: relationData,
-                sourceData: timeSourceData, candidateData: timeCandidateData)
-            try Task.checkCancellation()
-            guard relationFits else {
-                throw MeetingError.message("Yerel modelin iş zamanı anlam kontrolü alanı yeterli değil. Hiçbir kaynak atlanmadı; transkript korunuyor.")
+            if let timeProposal = try optionalValidatedTaskTimeProposal(proposedPhrase, input: timeInput) {
+                try Task.checkCancellation()
+                let relationInstructions = taskTimeRelationInstructions(language: language)
+                let relationSchema = try taskTimeRelationSchema(language: language)
+                let relationData = try modelInputData(timeProposal)
+                let relationQuestion = language == "Turkish"
+                    ? "Tam atıflı kaynaklara göre proposedTaskTimePhrase ifadesinin yalnız bu aday işteki rolünü sınıflandır; yalnız timeRelation döndür.\n"
+                    : "Classify proposedTaskTimePhrase's role for this task from the complete cited sources; return only timeRelation.\n"
+                let relationPrompt = relationQuestion + String(decoding: relationData, as: UTF8.self)
+                let relationFits = try await actionRequestFits(model: model, instructions: relationInstructions, schema: relationSchema,
+                    prompt: relationPrompt, responseTokens: 128, data: relationData,
+                    sourceData: timeSourceData, candidateData: timeCandidateData)
+                try Task.checkCancellation()
+                guard relationFits else {
+                    throw MeetingError.message("Yerel modelin iş zamanı anlam kontrolü alanı yeterli değil. Hiçbir kaynak atlanmadı; transkript korunuyor.")
+                }
+                let relationSession = LanguageModelSession(model: model, instructions: relationInstructions)
+                let relationResponse = try await relationSession.respond(to: relationPrompt, schema: relationSchema,
+                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 128))
+                try Task.checkCancellation()
+                deadline = try resolveTaskTimeRelation(relationResponse.content, proposal: timeProposal,
+                    input: timeInput, proposedPhrase: proposedPhrase)
+            } else {
+                deadline = nil
             }
-            let relationSession = LanguageModelSession(model: model, instructions: relationInstructions)
-            let relationResponse = try await relationSession.respond(to: relationPrompt, schema: relationSchema,
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 128))
-            try Task.checkCancellation()
-            deadline = try resolveTaskTimeRelation(relationResponse.content, proposal: timeProposal,
-                input: timeInput, proposedPhrase: proposedPhrase)
         } else {
             deadline = try taskTimeValue(nil, presence: time)
         }
