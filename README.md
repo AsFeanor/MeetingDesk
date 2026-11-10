@@ -4,7 +4,7 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-Güncellenebilir sürüm **0.5.3** yayımlandı. [En güncel GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) indirip uygulamayı bir kez Uygulamalar klasörüne taşıyın. Sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+**0.5.5 / yapı 13** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) indirip uygulamayı Uygulamalar klasörüne taşıyın. Eski imzalama anahtarına erişilemediği için bu sürüm yeni anahtar kullanır; **0.5.3 ve önceki sürümlerden geçiş bir kez elle kurulum gerektirir**. 0.5.5 kurulduktan sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
 
 ## Neler yapıyor?
 
@@ -22,6 +22,10 @@ Güncellenebilir sürüm **0.5.3** yayımlandı. [En güncel GitHub sürümünü
 - Sparkle ile uygulama içinden imzalı güncelleme denetlenir, indirilir ve kullanıcı onayıyla kurulur.
 
 [İş akışı rehberi](docs/WORKFLOW.md).
+
+### 0.5.5 ile gelenler
+
+Yerel özetlerde geçerli aksiyonların boş kalmasına veya kaynak doğrulamasında işlemin durmasına yol açan sorun düzeltildi. Kaynakta doğrulanamayan isteğe bağlı sorumlu ve tarih boş bırakılır; kararlaştırılmış iş korunur. Önceki toplantıda **Özeti yenile** kullanın; transkripti yeniden oluşturmanız gerekmez.
 
 ### 0.5.3 ile gelenler
 
@@ -73,7 +77,7 @@ Geliştirme sırasında bu depoda değişiklik yapıp test edin; kalıcı uygula
 
 Sürümler bu kaynak deposunun [GitHub Releases sayfasında](https://github.com/AsFeanor/MeetingDesk/releases) yayımlanır. Kamuya açık güncelleme adresi `https://github.com/AsFeanor/MeetingDesk/releases/latest/download/appcast.xml` olur. İmzalama özel anahtarı yerel Anahtar Zinciri'nde tutulur; yalnız kamuya açık anahtar ve besleme adresi uygulamaya eklenir. Yerel yayın için CI secret gerekmez. GitHub Actions ile otomatik imzalı yayın ayrıca ilgili secret yapılandırmasını ve `ENABLE_AUTOMATED_RELEASES=true` repository variable’ını gerektirir; varsayılan olarak kapalıdır.
 
-Sparkle güncelleme altyapısına sahip sürüm **bir kez kurulmalıdır**. Önceki sürümler bu altyapıyı içermediğinden kendilerini güncelleyemez. Sonraki sürümler uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle kurulur. Kayıt ve not işleme sırasında güncelleme kurulumu ertelenir.
+**0.5.5'e geçişte yeni imzalama anahtarı nedeniyle bir kez elle kurulum gerekir.** 0.5.3 ve önceki sürümler yeni imzayı doğrulayamaz. 0.5.5 kurulduktan sonraki sürümler uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle kurulur. Kayıt ve not işleme sırasında güncelleme kurulumu ertelenir.
 
 Güncelleme ZIP'i yalnız `Toplanti.app` içerir. Kaynak kod, kayıtlar ve dışa aktarılan notlar ZIP'e eklenmez. Ed25519 imzası güncellemenin yayıncıdan geldiğini doğrular. Mevcut ad hoc Apple kod imzası notarizasyon değildir; geniş dağıtım için Developer ID ve notarizasyon ayrıca yapılandırılabilir.
 

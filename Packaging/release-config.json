@@ -1,7 +1,7 @@
 {
   "updateRepository": "AsFeanor/MeetingDesk",
   "feedURL": "https://github.com/AsFeanor/MeetingDesk/releases/latest/download/appcast.xml",
-  "publicEDKey": "jgdePHKFmIJl9YC5wI999TZflxgI6cVh2/EmlCm422A=",
+  "publicEDKey": "suq6G8/Nb4sgGrOPfnO+ZFolFzyGX5A6EKT+qlcvKE4=",
   "privateUpdates": false,
   "signingAccount": "AsFeanor/MeetingDesk"
 }
