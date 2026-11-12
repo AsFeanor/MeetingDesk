@@ -66,7 +66,10 @@ extension AppStore {
                 }
                 throw MeetingError.message("İsim kaydedilemedi. Önceki toplantı ve ses profilleri korundu.")
             }
-            if let profiles = updatedProfiles { self.voiceProfiles = profiles }
+            if let profiles = updatedProfiles {
+                self.voiceProfiles = profiles
+                self.speakerRecognitionEnabled = true
+            }
             self.statusMessage = rememberVoice ? "İsim ve seçtiğin ses örneği kaydedildi." : "İsim bu toplantıya uygulandı."
             onSaved()
         }

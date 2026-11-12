@@ -162,6 +162,10 @@ struct SpeakerReviewWizard: View {
                 VStack(alignment: .leading, spacing: 7) {
                     Toggle("Dinlediğim bu sesi sonraki toplantılarda tanı", isOn: $rememberVoice)
                         .toggleStyle(.checkbox).disabled(unavailable || !canRemember)
+                    if !store.speakerRecognitionEnabled {
+                        Text("Onayladığında yeni transkriptlerde otomatik tanıma da açılır.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     if !store.speakerModelsReady {
                         Text("Sesi hatırlamak için modelleri Ayarlar’dan hazırla.")
                             .font(.caption).foregroundStyle(.secondary)

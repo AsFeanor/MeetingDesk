@@ -26,6 +26,7 @@ final class SpeakerReviewStoreTests: XCTestCase {
         XCTAssertEqual(updated.speakerTurns, meeting.speakerTurns)
         XCTAssertTrue(store.library.hasTranscriptVersion(for: meeting.id))
         XCTAssertTrue(try store.voiceProfileStore.load().isEmpty)
+        XCTAssertFalse(store.speakerRecognitionEnabled, "Label-only or failed enrollment must not enable future recognition")
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(".speaker-models").path))
     }
 
@@ -50,6 +51,7 @@ final class SpeakerReviewStoreTests: XCTestCase {
         XCTAssertEqual(store.selected?.speakerReviewAssignments?["system:B"], personID)
         XCTAssertEqual(store.selected?.speakerName("system:B"), "Onur")
         XCTAssertTrue(try store.voiceProfileStore.load().isEmpty)
+        XCTAssertFalse(store.speakerRecognitionEnabled, "Label-only or failed enrollment must not enable future recognition")
     }
 
     func testRememberWithoutApprovedExcerptFailsBeforeModelOrProfileWrites() async throws {
@@ -70,6 +72,7 @@ final class SpeakerReviewStoreTests: XCTestCase {
         XCTAssertEqual(store.selected, meeting)
         XCTAssertNotNil(store.errorMessage)
         XCTAssertTrue(try store.voiceProfileStore.load().isEmpty)
+        XCTAssertFalse(store.speakerRecognitionEnabled, "Label-only or failed enrollment must not enable future recognition")
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(".speaker-models").path))
     }
 
