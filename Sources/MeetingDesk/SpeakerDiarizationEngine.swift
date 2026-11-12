@@ -65,6 +65,34 @@ actor SpeakerDiarizationEngine {
         }
     }
 
+    /// Enroll only the short excerpt that was played and confirmed in review.
+    /// The caller verifies it is still one of the current overlap-free choices.
+    func sampleExcerpt(audioURL: URL, sample: SpeakerReviewSample) async throws -> SpeakerVoiceSample {
+        try Task.checkCancellation()
+        guard audioURL.isFileURL else { throw SpeakerEngineError.invalidAudio }
+        guard sample.start.isFinite, sample.end.isFinite, sample.start >= 0,
+              sample.duration.isFinite, sample.duration >= 3.4, sample.duration <= 8.000_001,
+              !sample.id.isEmpty, sample.id.count <= 512,
+              !sample.speakerID.isEmpty, sample.speakerID.count <= 256,
+              sample.id == sample.id.trimmingCharacters(in: .whitespacesAndNewlines),
+              sample.speakerID == sample.speakerID.trimmingCharacters(in: .whitespacesAndNewlines),
+              sample.speakerID.hasPrefix(sample.source.rawValue + ":"),
+              sample.speakerID.count > sample.source.rawValue.count + 1,
+              !sample.id.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
+              !sample.speakerID.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            throw SpeakerEngineError.invalidTimeline
+        }
+        try beginOperation()
+        defer { operationInProgress = false }
+        try await ensureModels()
+        return try await withAudio(audioURL, range: sample.start..<sample.end) { input in
+            // Input time zero is the beginning of the heard excerpt. Existing
+            // boundary trimming keeps every enrolled sample inside that excerpt.
+            let turn = SpeakerTurn(speakerID: sample.speakerID, source: sample.source, start: 0, end: input.duration)
+            return try await self.makeSample(input: input, speakerID: sample.speakerID, turns: [turn])
+        }
+    }
+
     private func beginOperation() throws {
         try Task.checkCancellation()
         guard !operationInProgress else { throw SpeakerEngineError.alreadyProcessing }
@@ -107,9 +135,9 @@ actor SpeakerDiarizationEngine {
         try Task.checkCancellation()
     }
 
-    private func withAudio<Value>(_ url: URL, operation: (SpeakerAudioInput) async throws -> Value) async throws -> Value {
+    private func withAudio<Value>(_ url: URL, range: Range<Double>? = nil, operation: (SpeakerAudioInput) async throws -> Value) async throws -> Value {
         progress?("Konuşmacı analizi için ses hazırlanıyor…", nil)
-        let input = try SpeakerAudioInput.make(url: url)
+        let input = try SpeakerAudioInput.make(url: url, range: range)
         do {
             let result = try await operation(input)
             try Task.checkCancellation()
@@ -315,7 +343,7 @@ struct SpeakerAudioInput: AudioSampleSource {
     var sampleCount: Int { bytes.count / MemoryLayout<Float>.stride }
     var duration: Double { Double(sampleCount) / Double(Self.sampleRate) }
 
-    static func make(url: URL) throws -> SpeakerAudioInput {
+    static func make(url: URL, range: Range<Double>? = nil) throws -> SpeakerAudioInput {
         try Task.checkCancellation()
         guard url.isFileURL else { throw SpeakerEngineError.invalidAudio }
         let input = try AVAudioFile(forReading: url)
@@ -328,6 +356,34 @@ struct SpeakerAudioInput: AudioSampleSource {
               let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: 8192) else {
             throw SpeakerEngineError.invalidAudio
         }
+        let firstFrame: AVAudioFramePosition
+        let lastFrame: AVAudioFramePosition
+        if let range {
+            let fileDuration = Double(input.length) / format.sampleRate
+            guard range.lowerBound.isFinite, range.upperBound.isFinite,
+                  range.lowerBound >= 0, range.upperBound > range.lowerBound,
+                  range.upperBound <= fileDuration else { throw SpeakerEngineError.invalidTimeline }
+            let first = (range.lowerBound * format.sampleRate).rounded(.up)
+            let last = (range.upperBound * format.sampleRate).rounded(.down)
+            guard first.isFinite, last.isFinite, first >= 0, last > first,
+                  first < Double(Int64.max), last < Double(Int64.max) else { throw SpeakerEngineError.invalidTimeline }
+            firstFrame = AVAudioFramePosition(first)
+            lastFrame = min(input.length, AVAudioFramePosition(last))
+            guard lastFrame > firstFrame else { throw SpeakerEngineError.invalidTimeline }
+        } else {
+            firstFrame = 0
+            lastFrame = input.length
+        }
+        // Seeking a compressed file may decode a containing packet internally;
+        // it does not read/convert the preceding meeting into an intermediate.
+        input.framePosition = firstFrame
+        let expectedDuration = Double(lastFrame - firstFrame) / format.sampleRate
+        let outputLimit: Int64?
+        if range != nil {
+            let count = (expectedDuration * Double(sampleRate)).rounded(.down)
+            guard count.isFinite, count > 0, count < Double(Int64.max) else { throw SpeakerEngineError.invalidTimeline }
+            outputLimit = Int64(count)
+        } else { outputLimit = nil }
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("MeetingDesk-SpeakerAudio-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         let rawURL = folder.appendingPathComponent("audio.f32")
@@ -348,7 +404,7 @@ struct SpeakerAudioInput: AudioSampleSource {
             let status = converter.convert(to: output, error: &conversionError) { packets, state in
                 do {
                     try Task.checkCancellation()
-                    let remaining = input.length - input.framePosition
+                    let remaining = lastFrame - input.framePosition
                     guard remaining > 0 else { state.pointee = .endOfStream; return nil }
                     let count = AVAudioFrameCount(min(Int64(min(packets, inputBuffer.frameCapacity)), remaining))
                     guard count > 0 else { state.pointee = .endOfStream; return nil }
@@ -364,7 +420,8 @@ struct SpeakerAudioInput: AudioSampleSource {
             }
             if let readError { throw readError }
             if let conversionError { throw conversionError }
-            let count = Int(output.frameLength)
+            let available = outputLimit.map { max(0, $0 - frames) } ?? Int64(output.frameLength)
+            let count = Int(min(Int64(output.frameLength), available))
             if count > 0 {
                 guard let pointer = output.floatChannelData?[0] else { throw SpeakerEngineError.invalidAudio }
                 for index in 0..<count {
@@ -379,7 +436,7 @@ struct SpeakerAudioInput: AudioSampleSource {
             guard status != .error, stalled < 16 else { throw SpeakerEngineError.invalidAudio }
         }
         try Task.checkCancellation()
-        let expectedDuration = Double(input.length) / format.sampleRate
+        if range != nil, input.framePosition < lastFrame { throw SpeakerEngineError.invalidAudio }
         guard frames > 0, Double(frames) / Double(sampleRate) >= expectedDuration - 0.25 else {
             throw SpeakerEngineError.invalidAudio
         }

@@ -4,13 +4,13 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-**0.6.0 / yapı 14** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+**0.6.1 / yapı 15** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
 
 ## Sesinden kişi tanıma
 
-Ayarlar’daki **Konuşmacılar ve ses profilleri** bölümünden ses modellerini bir kez indirin ve otomatik tanımayı açın. Bir toplantının transkriptinde **Konuşmacıları tanı** seçeneğini kullanın; kişiyi isimlendirip **Sesini hatırla** ile açıkça onaylayın. Sonraki transkriptlerde güçlü ses eşleşmeleri isimlendirilir; belirsiz eşleşmeler onay bekler. Konuşmacı veya isim düzeltmeleri tek başına ses profilini değiştirmez.
+Ayarlar’daki **Konuşmacılar ve ses profilleri** bölümünden modelleri bir kez indirin. Bir toplantının transkriptinde **Konuşmacıları düzenle** seçeneğini açın: kısa örneği dinleyip kişiyi seçin veya isim ekleyin. Aynı kişi farklı örneklerde çıkarsa listeden aynı ismi seçebilirsiniz. İsterseniz yalnız o örnek için **Dinlediğim bu sesi sonraki toplantılarda tanı** seçeneğini açıkça onaylayın.
 
-Profiller yalnız bu Mac’te saklanır. Ayarlar’dan isimlerini değiştirebilir veya silebilirsiniz. Ses kayıtlarının saklama süresi profilleri otomatik silmez. Eski dökümlerde kelime zamanları bulunmayabilir; daha hassas ayrım için dökümü yeniden oluşturun. Çakışan veya yeterince net olmayan konuşmalar otomatik isimlendirilmez.
+Profiller yalnız bu Mac’te saklanır. Ayarlar’dan isimlerini değiştirebilir veya silebilirsiniz. Ses kayıtlarının saklama süresi profilleri otomatik silmez. Yeni transkriptlerde otomatik tanıma ayrıca açılabilir; belirsiz eşleşmeler onay bekler. Konuşmacı veya isim düzeltmek tek başına profili değiştirmez.
 
 ## Neler yapıyor?
 

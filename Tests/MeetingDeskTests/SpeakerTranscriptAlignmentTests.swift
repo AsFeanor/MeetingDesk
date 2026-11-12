@@ -89,8 +89,65 @@ final class SpeakerTranscriptAlignmentTests: XCTestCase {
 
     func testDuplicatePredictedTurnsCannotInflateLegacySpeakerCoverage() throws {
         let original = segment(nil)
-        let result = try SpeakerTranscriptAlignment.assign([original], turns: Array(repeating: turn("system:A", 0, 1), count: 10))
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: Array(repeating: turn("system:A", 0, 0.1), count: 10))
         XCTAssertEqual(result[0].speaker, "Toplantı sesi")
+    }
+
+    func testLegacySingleVoiceWithLongPausesUsesRealSpeechCoverage() throws {
+        let original = segment(nil, start: 0, end: 10)
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: [turn("system:A", 2, 7)])
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].speaker, "system:A")
+        XCTAssertEqual(result[0].text, original.text)
+        XCTAssertEqual(result[0].start, 0)
+        XCTAssertEqual(result[0].end, 10)
+        XCTAssertNil(result[0].words)
+    }
+
+    func testLegacyTwentyPercentSecondarySpeakerStaysUnknown() throws {
+        let original = segment(nil, start: 0, end: 10)
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: [turn("system:A", 0, 8), turn("system:B", 8, 10)])
+        XCTAssertEqual(result[0].speaker, "Toplantı sesi")
+        XCTAssertEqual(result[0].text, original.text)
+        XCTAssertEqual(result[0].start, 0)
+        XCTAssertEqual(result[0].end, 10)
+    }
+
+    func testLegacyTinySDKBoundaryJitterIsTolerated() throws {
+        let original = segment(nil, start: 0, end: 10)
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: [turn("system:A", 2, 7), turn("system:B", 6.98, 7.02)])
+        XCTAssertEqual(result[0].speaker, "system:A")
+    }
+
+    func testLegacySmallAbsoluteCommitmentCannotDisappearIntoLongMajority() throws {
+        let original = segment(nil, start: 0, end: 100)
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: [turn("system:A", 0, 99.8), turn("system:B", 99.8, 100)])
+        XCTAssertEqual(result[0].speaker, "Toplantı sesi")
+    }
+
+    func testLegacyDistinctTinySecondaryTurnsAreCountedTogether() throws {
+        let original = segment(nil, start: 0, end: 10)
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: [
+            turn("system:A", 0, 9), turn("system:B", 9, 9.04), turn("system:C", 9.5, 9.54)
+        ])
+        XCTAssertEqual(result[0].speaker, "Toplantı sesi")
+    }
+
+    func testLegacyShortUtteranceStillNeedsSixtyPercentOfItsActualDuration() throws {
+        let original = segment(nil, start: 1, end: 1.2)
+        let sparse = try SpeakerTranscriptAlignment.assign([original], turns: [turn("system:A", 1.02, 1.1)])
+        XCTAssertEqual(sparse[0].speaker, "Toplantı sesi")
+        let covered = try SpeakerTranscriptAlignment.assign([original], turns: [turn("system:A", 1.02, 1.18)])
+        XCTAssertEqual(covered[0].speaker, "system:A")
+    }
+
+    func testLegacyPauseAttributionUnionsDuplicateTurnsAndIsolatesSources() throws {
+        let original = segment(nil, start: 0, end: 10)
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: [
+            turn("system:A", 2, 7), turn("system:A", 2, 7),
+            turn("microphone:B", 0, 10, source: .microphone)
+        ])
+        XCTAssertEqual(result[0].speaker, "system:A")
     }
 
     func testChannelMergePreservesTimedWordsAndSourceProvenance() throws {

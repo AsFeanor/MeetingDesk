@@ -58,6 +58,8 @@ Geliştirme ve yeni sürüm yayımlama adımları için [README](../README.md) v
 
 ## Konuşmacı tanıma ve hatırlanan kişiler
 
-0.6.0 ile Ayarlar → Konuşmacılar ve ses profilleri bölümünde modelleri bir kez indirip otomatik tanımayı açabilirsiniz. İlk toplantıda Transkript → Konuşmacıları tanı seçeneğiyle kişileri ayırın. Kişinin ismini yazıp Sesini hatırla seçeneğindeki onayı verin. Sonraki transkriptlerde güçlü eşleşmeler isimlendirilir; belirsiz sonuçlar onay bekler. Yanlış bölümü transkriptte başka konuşmacıya atayabilirsiniz; bu işlem ses profilini değiştirmez.
+Ayarlar → Konuşmacılar ve ses profilleri bölümünden modelleri bir kez indirin. Transkript → Konuşmacıları düzenle seçeneğinde kısa örneği dinleyin, “Bu kim?” sorusunda mevcut kişiyi seçin veya yeni isim yazın. Aynı kişinin başka örneklerini de listeden aynı kişiye bağlayabilirsiniz. Kaydet ve devam et ile sonraki sese geçin. Bu işlem sadece o toplantıdaki isimleri değiştirir.
 
-Profilleri Ayarlar’dan yeniden isimlendirebilir veya silebilirsiniz. Profil silmek eski toplantılardaki yazılı isimleri değiştirmez. Ses kayıtlarının otomatik silinmesi ses profillerini silmez. Ses kaydı silinmiş toplantılarda yeni ses örneği oluşturulamaz. Eski dökümlerde kelime zamanları yoksa daha hassas ayrım için dökümü yeniden oluşturun.
+Sonraki toplantılarda da tanınmasını istediğiniz ses için, dinledikten sonra “Dinlediğim bu sesi sonraki toplantılarda tanı” seçeneğini onaylayın. Yeni transkriptlerde otomatik tanımayı Ayarlar’dan açın. Güçlü eşleşmeler isimlendirilir, belirsiz eşleşmeler onay bekler.
+
+Profiller Ayarlar’dan silinebilir. Silmek eski toplantılardaki yazılı isimleri değiştirmez; kayıtların otomatik silinmesi de ses profillerini silmez. Ses kaydı silinmiş toplantılarda yeni örnek dinlenemez veya hatırlatılamaz. Eski dökümlerde mevcut ses aralıkları isimlendirme için kullanılır; daha hassas kelime düzeyi ayrım için dökümü yeniden oluşturabilirsiniz.

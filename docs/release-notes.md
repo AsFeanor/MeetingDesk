@@ -1,10 +1,9 @@
-# Toplantı 0.6.0
+# Toplantı 0.6.1
 
-- Yerel konuşmacı ayrımı ve sesinden kişi tanıma eklendi. Ayarlar → Konuşmacılar ve ses profilleri bölümünden modelleri bir kez indirip otomatik tanımayı açabilirsiniz.
-- Transkriptte kişiyi isimlendirip “Sesini hatırla” ile onayladıktan sonra sonraki toplantılarda güçlü eşleşmeler isimlendirilir. Belirsiz eşleşmeler “Bu kişi … mi?” sorusuyla onay bekler.
-- Ses profilleri Mac’te tutulur; isim düzeltme, onaylı ek örnek ve profil silme seçenekleri eklendi. Elle konuşmacı düzeltmek veya otomatik eşleşmek profili kendiliğinden değiştirmez.
-- Yerel transkriptlerde zamanlı kelime bilgileri korunur; konuşmacı değişimleri bu zamanlarla eşleştirilir. Eski dökümler yeniden oluşturularak daha hassas ayrım elde edilebilir.
+- Konuşmacı düzenleme sadeleştirildi: kısa örneği dinleyin, “Bu kim?” sorusunda mevcut kişiyi seçin veya yeni isim ekleyin, ardından sonraki sese geçin.
+- Bir kişi birkaç ses grubuna ayrıldıysa aynı kişiyi tekrar seçebilirsiniz. Transkriptteki kişi seçimi de bu birleştirmeyi gösterir.
+- Her ses için farklı kısa örnekler dinlenebilir. Yalnız açıkça seçilen örnek, onay verilirse sonraki toplantılar için ses profiline eklenir. Sesi hatırlatmadan sadece bu toplantıda isim vermek mümkündür.
+- Eski dökümlerde tek kişinin konuştuğu, duraklamalı bölümler mevcut ses aralıklarından daha iyi eşleştirilir. Anlamlı ikinci bir konuşmacı bulunan bölümler otomatik olarak tek kişiye atanmaz.
+- Yerel transkriptlerde zaman bilgisi olmayan boşluk ve noktalama yüzünden kelime zamanlarının tümden kaybolması düzeltildi.
 
-Ses kaydı saklama süresi profilleri silmez; profilleri Ayarlar’dan ayrıca silebilirsiniz. Sesler konuşmacı tanıma için herhangi bir API’ye gönderilmez. İlk model indirmesi internet gerektirir.
-
-0.5.5’ten güncelleme uygulama içinden yapılabilir. 0.5.3 ve önceki sürümler yeni imzalama anahtarını tanımadığı için bir kez elle kurulum gerektirir.
+Sesler ve profiller bu Mac’te kalır. Konuşmacı isimlendirme sırasında önceki döküm geri getirilebilir. Sesinden tanımak için yalnız dinlediğiniz örneği ayrıca onaylamanız gerekir.
