@@ -5,7 +5,7 @@ import Speech
 
 /// Uses only Apple's on-device transcribers. No API key, audio upload, or cloud fallback.
 struct LocalTranscriptionService {
-    static let privacyDescription = "Ses Mac’te işlenir; herhangi bir API’ye gönderilmez. İlk kullanımda Apple’ın dil modeli indirilebilir. Ayrı kaynaklar varsa Mikrofon ve Toplantı sesi etiketleri kullanılır; kişiler otomatik belirlenmez."
+    static let privacyDescription = "Ses Mac’te işlenir; herhangi bir API’ye gönderilmez. İlk kullanımda Apple’ın dil modeli indirilebilir. Ayrı kaynaklar varsa mikrofon ve toplantı sesi birlikte korunur. Konuşmacı tanıma açıldığında sesler yalnız bu Mac’teki onaylı ses profilleriyle karşılaştırılır."
 
     static func localeIdentifier(for language: String) throws -> String {
         switch language {
@@ -128,6 +128,17 @@ struct LocalTranscriptionService {
     }
 
     @available(macOS 26, *)
+    private func timedWords(_ text: AttributedString) -> [TranscriptWord]? {
+        let units = text.runs.compactMap { run -> TranscriptWord? in
+            guard let range = run.audioTimeRange else { return nil }
+            return TranscriptWord(text: String(text[run.range].characters), start: range.start.seconds, end: range.end.seconds)
+        }
+        // Partial timing must not silently drop un-timed text during speaker alignment.
+        guard !units.isEmpty, units.map(\.text).joined() == String(text.characters) else { return nil }
+        return units
+    }
+
+    @available(macOS 26, *)
     private func collect<Results: AsyncSequence>(results: Results, duration: Double) async throws -> [TranscriptSegment]
     where Results.Element: SpeechModuleResult {
         var assembler = LocalTranscriptAssembler(duration: duration)
@@ -136,9 +147,9 @@ struct LocalTranscriptionService {
             guard result.isFinal else { continue }
             // Both supported Apple transcribers expose text and timing in the same result shape.
             if let speech = result as? SpeechTranscriber.Result {
-                try assembler.append(text: String(speech.text.characters), start: speech.range.start.seconds, end: speech.range.end.seconds)
+                try assembler.append(text: String(speech.text.characters), start: speech.range.start.seconds, end: speech.range.end.seconds, words: timedWords(speech.text))
             } else if let dictation = result as? DictationTranscriber.Result {
-                try assembler.append(text: String(dictation.text.characters), start: dictation.range.start.seconds, end: dictation.range.end.seconds)
+                try assembler.append(text: String(dictation.text.characters), start: dictation.range.start.seconds, end: dictation.range.end.seconds, words: timedWords(dictation.text))
             } else { throw MeetingError.message("Apple yerel transkript sonucu okunamadı.") }
         }
         try Task.checkCancellation()
@@ -151,7 +162,7 @@ struct LocalTranscriptAssembler {
     let duration: Double
     private(set) var segments: [TranscriptSegment] = []
 
-    mutating func append(text: String, start: Double, end: Double) throws {
+    mutating func append(text: String, start: Double, end: Double, words: [TranscriptWord]? = nil) throws {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
         guard start.isFinite, end.isFinite, start >= 0, end >= start,
@@ -161,7 +172,7 @@ struct LocalTranscriptAssembler {
         let boundedEnd = min(end, duration)
         let boundedStart = min(start, duration)
         guard !segments.contains(where: { $0.start == boundedStart && $0.end == boundedEnd && $0.text == clean }) else { return }
-        segments.append(TranscriptSegment(id: "local-\(segments.count + 1)", speaker: "Konuşma", start: boundedStart, end: boundedEnd, text: clean))
+        segments.append(TranscriptSegment(id: "local-\(segments.count + 1)", speaker: "Konuşma", start: boundedStart, end: boundedEnd, text: clean, words: words))
     }
 
     static func requireEntireFileRead(lastSampleSeconds: Double, duration: Double) throws {

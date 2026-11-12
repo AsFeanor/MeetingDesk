@@ -11,7 +11,7 @@ Mevcut dağıtım Apple Silicon Mac içindir. Kayıt için macOS 15+, ücretsiz 
 3. Daha önceki Toplantı uygulamasını kapatın; yeni kopyayı Uygulamalar klasöründen açın. İsterseniz bu kopyayı Dock'a ekleyin.
 4. İlk kayıtta macOS'un mikrofon ve sistem sesi izinlerini verin. Uygulamadaki mikrofon seçiminizi ve konuşma dilinizi kontrol edin.
 
-**0.5.3 veya önceki bir sürümden 0.5.5'e geçiyorsanız bu adımları bir kez elle uygulayın.** Eski imzalama anahtarına erişilemediği için 0.5.5 yeni anahtar kullanır; eski uygulama yeni güncelleme imzasını doğrulayamaz. Çalışan kayıt veya not hazırlama işlemi bittikten sonra eski uygulamayı kapatın ve Uygulamalar klasöründeki kopyayı yenisiyle değiştirin. Toplantı arşivini silmeyin. 0.5.5 kurulduktan sonraki kararlı sürümler aynı uygulama üzerinden kurulabilir. Uygulamayı ZIP'in içinden veya geçici indirme klasöründen çalıştırmak yerine kalıcı Uygulamalar klasörüne taşıyın.
+**0.5.3 veya önceki bir sürümden geçiyorsanız bu adımları bir kez elle uygulayın.** Eski imzalama anahtarına erişilemediği için 0.5.5 yeni anahtar kullanır; eski uygulama yeni güncelleme imzasını doğrulayamaz. Çalışan kayıt veya not hazırlama işlemi bittikten sonra eski uygulamayı kapatın ve Uygulamalar klasöründeki kopyayı yenisiyle değiştirin. Toplantı arşivini silmeyin. 0.5.5 ve daha yeni sürümler aynı uygulama üzerinden güncellenebilir. Uygulamayı ZIP'in içinden veya geçici indirme klasöründen çalıştırmak yerine kalıcı Uygulamalar klasörüne taşıyın.
 
 Sürümler sayfasında henüz uygulama ZIP'i görünmüyorsa aşağıdaki kaynak koddan derleme yolu kullanılabilir. İmzalama yapılandırması boş bırakılmış yerel geliştirme paketi uygulama içi güncelleme alamaz; resmi release paketinin içine doğrulama anahtarı ve besleme adresi eklenir.
 
@@ -55,3 +55,9 @@ zsh Packaging/build.sh dist/local
 Derlenen `dist/local/Toplanti.app` uygulamasını Finder ile Uygulamalar klasörüne taşıyın. Aynı hedefte mevcut paket varsa derleme üzerine yazmaz; sonraki deneme için yeni bir çıktı klasörü seçin. Güncelleme yapılandırması boşsa uygulama kayıt/transkript/özet özellikleriyle kullanılabilir, güncelleyici kapalı kalır.
 
 Geliştirme ve yeni sürüm yayımlama adımları için [README](../README.md) ve [yayın rehberi](RELEASING.md) dosyalarına bakın.
+
+## Konuşmacı tanıma ve hatırlanan kişiler
+
+0.6.0 ile Ayarlar → Konuşmacılar ve ses profilleri bölümünde modelleri bir kez indirip otomatik tanımayı açabilirsiniz. İlk toplantıda Transkript → Konuşmacıları tanı seçeneğiyle kişileri ayırın. Kişinin ismini yazıp Sesini hatırla seçeneğindeki onayı verin. Sonraki transkriptlerde güçlü eşleşmeler isimlendirilir; belirsiz sonuçlar onay bekler. Yanlış bölümü transkriptte başka konuşmacıya atayabilirsiniz; bu işlem ses profilini değiştirmez.
+
+Profilleri Ayarlar’dan yeniden isimlendirebilir veya silebilirsiniz. Profil silmek eski toplantılardaki yazılı isimleri değiştirmez. Ses kayıtlarının otomatik silinmesi ses profillerini silmez. Ses kaydı silinmiş toplantılarda yeni ses örneği oluşturulamaz. Eski dökümlerde kelime zamanları yoksa daha hassas ayrım için dökümü yeniden oluşturun.

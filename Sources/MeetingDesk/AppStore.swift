@@ -27,6 +27,16 @@ final class AppStore: ObservableObject {
     @Published var showRecordingPanel = UserDefaults.standard.object(forKey: "meetingdesk.showRecordingPanel") as? Bool ?? true {
         didSet { UserDefaults.standard.set(showRecordingPanel, forKey: "meetingdesk.showRecordingPanel") }
     }
+    @Published var speakerRecognitionEnabled = false {
+        didSet { speakerSettingsDefaults.set(speakerRecognitionEnabled, forKey: "meetingdesk.speakerRecognitionEnabled") }
+    }
+    @Published var voiceProfiles: [VoiceProfile] = []
+    @Published var speakerModelStatus = "Konuşmacıları tanımak için modelleri bir kez indir. Sesler bu Mac’te işlenir."
+    @Published var speakerModelsReady = false
+    @Published var preparingSpeakerModels = false
+    let speakerSettingsDefaults: UserDefaults
+    let speakerEngine: SpeakerDiarizationEngine
+    let voiceProfileStore: VoiceProfileStore
     @Published var hasKey = false
     @Published var processingMode: ProcessingMode = ProcessingMode(rawValue: UserDefaults.standard.string(forKey: "meetingdesk.processingMode") ?? "") ?? .local {
         didSet { UserDefaults.standard.set(processingMode.rawValue, forKey: "meetingdesk.processingMode") }
@@ -127,13 +137,25 @@ final class AppStore: ObservableObject {
         systemServicesEnabled = initializeSystemServices && previewRoot == nil
         notion = notionConnection ?? NotionConnection(loadCredentials: systemServicesEnabled)
         library = MeetingLibrary(root: root ?? previewRoot)
+        speakerSettingsDefaults = audioRetentionDefaults
+        speakerEngine = SpeakerDiarizationEngine(cacheRoot: library.root.appendingPathComponent(".speaker-models", isDirectory: true))
+        voiceProfileStore = VoiceProfileStore(root: library.root.appendingPathComponent(".voice-profiles", isDirectory: true))
+        speakerRecognitionEnabled = audioRetentionDefaults.bool(forKey: "meetingdesk.speakerRecognitionEnabled")
+        speakerModelsReady = audioRetentionDefaults.bool(forKey: "meetingdesk.speakerModelsReady")
         self.audioRetentionDefaults = audioRetentionDefaults
         self.audioRetentionService = audioRetentionService ?? AudioRetentionService(library: library)
+        #if DEBUG
+        if previewRoot != nil {
+            speakerModelsReady = Bundle.main.object(forInfoDictionaryKey: "MeetingDeskPreviewSpeakerModelsReady") as? Bool ?? false
+        }
+        #endif
+        if speakerModelsReady { speakerModelStatus = "Konuşmacı modelleri hazır. Sesler bu Mac’te işlenir." }
         if let stored = audioRetentionDefaults.data(forKey: Self.audioRetentionPolicyKey),
            let policy = try? JSONDecoder().decode(AudioRetentionPolicy.self, from: stored) {
             audioRetentionPolicy = policy
         }
         reload()
+        do { voiceProfiles = try voiceProfileStore.load() } catch { errorMessage = error.localizedDescription }
         if initializeSystemServices && previewRoot == nil { refreshKey(); refreshMicrophones() }
         Publishers.CombineLatest4(recorder.$isRecording, $isBusy, $showMicrophoneCheck, notion.$isExporting)
             .map { recording, busy, checking, exporting in recording || busy || checking || exporting }
@@ -381,7 +403,15 @@ final class AppStore: ObservableObject {
             $0.transcribedLanguage = mode == .local ? language : nil
             $0.speechLanguage = language; $0.speakerNames = [:]
             $0.transcriptSourceSeparated = separated
+            $0.speakerTurns = nil; $0.speakerSuggestions = nil; $0.speakerRecognitionEngine = nil; $0.speakerRecognitionNotice = nil
         }) else { throw MeetingError.message("Transkript kaydedilemedi. Önceki döküm ve ses kaydı korunuyor.") }
+        if speakerRecognitionEnabled {
+            do { try await recognizeMeeting(id) }
+            catch is CancellationError { throw CancellationError() }
+            catch {
+                update(id) { $0.speakerRecognitionNotice = "Konuşmacılar tanınamadı. Transkript korundu: \(error.localizedDescription)" }
+            }
+        }
         statusMessage = notice ?? (mode == .local ? "Yerel transkript hazır. Mikrofon ve toplantı sesi kaynak etiketleri kişi kimliği değildir." : "Transkript hazır. Konuşmacı adlarını kontrol edebilirsin.")
     }
 
@@ -403,6 +433,10 @@ final class AppStore: ObservableObject {
                 $0.notesManualEdits = previous.notesManualEdits
                 $0.reviewedAt = $0.notesNeedRefresh ? nil : previous.reviewedAt
                 $0.transcriptSourceSeparated = previous.transcriptSourceSeparated
+                $0.speakerTurns = previous.speakerTurns
+                $0.speakerSuggestions = previous.speakerSuggestions
+                $0.speakerRecognitionEngine = previous.speakerRecognitionEngine
+                $0.speakerRecognitionNotice = previous.speakerRecognitionNotice
             }) else { throw MeetingError.message("Önceki döküm kaydedilemedi; mevcut döküm korundu.") }
             statusMessage = "Önceki döküm geri getirildi. Ses kaydı ve kişisel notlar korundu."
         } catch { errorMessage = error.localizedDescription }
@@ -507,7 +541,7 @@ final class AppStore: ObservableObject {
         return nil
     }
 
-    private func runProcessing(message: String, operation: @escaping () async throws -> Void) {
+    func runProcessing(message: String, operation: @escaping () async throws -> Void) {
         isBusy = true
         statusMessage = message
         processingTask = Task {

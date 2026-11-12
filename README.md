@@ -4,7 +4,13 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-**0.5.5 / yapı 13** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) indirip uygulamayı Uygulamalar klasörüne taşıyın. Eski imzalama anahtarına erişilemediği için bu sürüm yeni anahtar kullanır; **0.5.3 ve önceki sürümlerden geçiş bir kez elle kurulum gerektirir**. 0.5.5 kurulduktan sonraki sürümler uygulamanın **Güncellemeleri kontrol et…** seçeneğiyle kurulabilir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+**0.6.0 / yapı 14** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+
+## Sesinden kişi tanıma
+
+Ayarlar’daki **Konuşmacılar ve ses profilleri** bölümünden ses modellerini bir kez indirin ve otomatik tanımayı açın. Bir toplantının transkriptinde **Konuşmacıları tanı** seçeneğini kullanın; kişiyi isimlendirip **Sesini hatırla** ile açıkça onaylayın. Sonraki transkriptlerde güçlü ses eşleşmeleri isimlendirilir; belirsiz eşleşmeler onay bekler. Konuşmacı veya isim düzeltmeleri tek başına ses profilini değiştirmez.
+
+Profiller yalnız bu Mac’te saklanır. Ayarlar’dan isimlerini değiştirebilir veya silebilirsiniz. Ses kayıtlarının saklama süresi profilleri otomatik silmez. Eski dökümlerde kelime zamanları bulunmayabilir; daha hassas ayrım için dökümü yeniden oluşturun. Çakışan veya yeterince net olmayan konuşmalar otomatik isimlendirilmez.
 
 ## Neler yapıyor?
 

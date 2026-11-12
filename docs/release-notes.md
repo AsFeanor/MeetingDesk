@@ -1,9 +1,10 @@
-# Toplantı 0.5.5
+# Toplantı 0.6.0
 
-- Yerel özetlerde aksiyonların boş kalmasına veya kaynak doğrulama hatasıyla işlemin durmasına yol açan sorun düzeltildi. Aksiyon açıklamasının transkriptten kelimesi kelimesine alıntı olması şartı kaldırıldı; aynı işin kaynakta kararlaştırılmış olması, kişi ve tarih kontrolleri korunur.
-- Kaynakta doğrulanamayan sorumlu veya tarih boş bırakılır; bu alanlar yüzünden geçerli aksiyonların tamamı reddedilmez.
-- Sorumlu veya tarih belirtilmeyen kararlaştırılmış işler aksiyon olarak korunur; iptal edilmiş, tamamlanmış ve yalnız önerilmiş işler ayrı değerlendirilir.
+- Yerel konuşmacı ayrımı ve sesinden kişi tanıma eklendi. Ayarlar → Konuşmacılar ve ses profilleri bölümünden modelleri bir kez indirip otomatik tanımayı açabilirsiniz.
+- Transkriptte kişiyi isimlendirip “Sesini hatırla” ile onayladıktan sonra sonraki toplantılarda güçlü eşleşmeler isimlendirilir. Belirsiz eşleşmeler “Bu kişi … mi?” sorusuyla onay bekler.
+- Ses profilleri Mac’te tutulur; isim düzeltme, onaylı ek örnek ve profil silme seçenekleri eklendi. Elle konuşmacı düzeltmek veya otomatik eşleşmek profili kendiliğinden değiştirmez.
+- Yerel transkriptlerde zamanlı kelime bilgileri korunur; konuşmacı değişimleri bu zamanlarla eşleştirilir. Eski dökümler yeniden oluşturularak daha hassas ayrım elde edilebilir.
 
-Önceki toplantılarda **Özeti yenile** seçeneğini kullanın. Transkripti yeniden oluşturmanız gerekmez.
+Ses kaydı saklama süresi profilleri silmez; profilleri Ayarlar’dan ayrıca silebilirsiniz. Sesler konuşmacı tanıma için herhangi bir API’ye gönderilmez. İlk model indirmesi internet gerektirir.
 
-**Bir kez elle kurulum gerekir:** Eski imzalama anahtarına erişilemediği için 0.5.5 yeni anahtarla imzalandı. 0.5.3 ve önceki sürümlerden uygulama içi güncelleme yapılamaz. Bu sürümün ZIP'ini GitHub'dan indirip çalışan işlemler bittikten sonra eski uygulamayı kapatın ve Uygulamalar klasöründeki Toplanti.app kopyasını değiştirin. Toplantı arşiviniz aynı yerde kalır. 0.5.5 kurulduktan sonraki sürümler uygulama içinden güncellenebilir.
+0.5.5’ten güncelleme uygulama içinden yapılabilir. 0.5.3 ve önceki sürümler yeni imzalama anahtarını tanımadığı için bir kez elle kurulum gerektirir.

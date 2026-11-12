@@ -54,7 +54,7 @@ Ortam değişkenleri `UPDATE_REPOSITORY`, `SU_FEED_URL`, `SU_PUBLIC_ED_KEY`, `PR
 
 ## İlk güncellenebilir sürüm
 
-`Packaging/Info.plist` içindeki `CFBundleShortVersionString` kullanıcıya görünen sürüm, `CFBundleVersion` artan tam sayı yapı numarasıdır. İlk güncellenebilir sürüm `0.3.1` / yapı `6` idi. Bu sürüm `0.5.5` / yapı `13` olarak hazırlanır. Kaynak kod etiketi ve indirilebilir paket aynı sürüme karşılık gelir.
+`Packaging/Info.plist` içindeki `CFBundleShortVersionString` kullanıcıya görünen sürüm, `CFBundleVersion` artan tam sayı yapı numarasıdır. İlk güncellenebilir sürüm `0.3.1` / yapı `6` idi. Bu sürüm `0.6.0` / yapı `14` olarak hazırlanır. Kaynak kod etiketi ve indirilebilir paket aynı sürüme karşılık gelir.
 
 `0.5.5` ile eski imzalama anahtarına erişilemediği için yeni yerel anahtara geçilmiştir. Yeni kamuya açık anahtar `Packaging/release-config.json` içinde tutulur; gizli anahtar Anahtar Zinciri'nde kalır. `0.5.3` ve önceki sürümler yeni imzayı doğrulayamaz: kullanıcılar `0.5.5` paketini bir kez elle kurmalıdır. Sonraki sürümler yeni anahtarla imzalanarak uygulama içinden güncellenebilir. Yayında `--bootstrap` kullanılmaz; mevcut beslemenin yapı numarası kontrolü devam eder.
 
@@ -76,9 +76,9 @@ En güncel kararlı sürümü GitHub Releases sayfasından indirip **bir kez** k
 5. Sürümün hazır olduğu doğrulandıktan sonra yayınlayın.
 
 ```sh
-zsh Packaging/build.sh dist/v0.5.5
-python3 Packaging/release.py publish --app dist/v0.5.5/Toplanti.app --prepare-only
-python3 Packaging/release.py publish --app dist/v0.5.5/Toplanti.app --notes-file docs/release-notes.md
+zsh Packaging/build.sh dist/v0.6.0
+python3 Packaging/release.py publish --app dist/v0.6.0/Toplanti.app --prepare-only
+python3 Packaging/release.py publish --app dist/v0.6.0/Toplanti.app --notes-file docs/release-notes.md
 ```
 
 `--prepare-only` GitHub'dan salt okunur depo/besleme bilgisi alır ve yerel ZIP'i imzalar; release oluşturmaz ve beslemeyi değiştirmez. Kamuya açık anahtar ile ZIP imzası ayrıca CryptoKit kullanılarak doğrulanır.
@@ -114,9 +114,9 @@ Otomatik yayın için kaynak deponun Actions secrets alanında:
 Tag'i göndermeden önce sürüm/yapı değerleri ve kamuya açık güncelleme yapılandırması commit edilmiş olmalıdır:
 
 ```sh
-git tag v0.5.5
+git tag v0.6.0
 git push origin main
-git push origin v0.5.5
+git push origin v0.6.0
 ```
 
 İlk Actions yayını için workflow'u elle çalıştırıp `bootstrap: true` seçin. Yerelde ilk release zaten yayımlandıysa bu seçenek kullanılmaz.
