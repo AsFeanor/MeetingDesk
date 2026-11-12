@@ -1,9 +1,7 @@
-# Toplantı 0.6.1
+# Toplantı 0.6.2
 
-- Konuşmacı düzenleme sadeleştirildi: kısa örneği dinleyin, “Bu kim?” sorusunda mevcut kişiyi seçin veya yeni isim ekleyin, ardından sonraki sese geçin.
-- Bir kişi birkaç ses grubuna ayrıldıysa aynı kişiyi tekrar seçebilirsiniz. Transkriptteki kişi seçimi de bu birleştirmeyi gösterir.
-- Her ses için farklı kısa örnekler dinlenebilir. Yalnız açıkça seçilen örnek, onay verilirse sonraki toplantılar için ses profiline eklenir. Sesi hatırlatmadan sadece bu toplantıda isim vermek mümkündür.
-- Eski dökümlerde tek kişinin konuştuğu, duraklamalı bölümler mevcut ses aralıklarından daha iyi eşleştirilir. Anlamlı ikinci bir konuşmacı bulunan bölümler otomatik olarak tek kişiye atanmaz.
-- Yerel transkriptlerde zaman bilgisi olmayan boşluk ve noktalama yüzünden kelime zamanlarının tümden kaybolması düzeltildi.
+- Kenar çubuğuna **Kişiler** eklendi. Toplantıda isim verilen ve sesi hatırlanan kişiler tek listede görülebilir; isim veya toplantıyla aranabilir.
+- Kişinin ilgili toplantıları açılabilir. Hatırlanan ses profilinin adı değiştirilebilir veya **Sesini unut** seçilebilir; toplantılardaki yazılı isimler korunur.
+- Yerel özette görev cümlesi kaynakta kesin olarak bulunduğu halde modelin kaynak etiketini eksik yazması yüzünden tüm notun durması düzeltildi. Eksik bağlantı yalnız kaynakta doğrulanabiliyorsa tamamlanır; diğer eşleştirme hatalarında aynı bölüm bir kez yeniden denenir. Kaynak ve aksiyon kontrolleri korunur.
 
-Sesler ve profiller bu Mac’te kalır. Konuşmacı isimlendirme sırasında önceki döküm geri getirilebilir. Sesinden tanımak için yalnız dinlediğiniz örneği ayrıca onaylamanız gerekir.
+Mevcut toplantıda **Özet oluştur** veya **Özeti yenile** kullanılabilir; transkripti yeniden üretmek gerekmez. Kişi listesi ve yerel özet işlemleri bu Mac’te kalır.

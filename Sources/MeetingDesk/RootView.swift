@@ -9,6 +9,7 @@ struct RootView: View {
     @State private var query = ""
     @State private var tab: DetailTab = .overview
     @State private var showImport = false
+    @State private var showPeople = false
     @State private var focusID: String?
     @State private var editSegment: String?
     @State private var sharingMeeting: Meeting?
@@ -31,6 +32,16 @@ struct RootView: View {
                 Button { _ = store.newMeeting(); tab = .overview } label: { Label("Yeni toplantı", systemImage: "plus") }
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .disabled(store.workInProgress)
+                Button { showPeople = true } label: {
+                    HStack {
+                        Label("Kişiler", systemImage: "person.2")
+                        Spacer()
+                        Text("\(PeopleDirectory.entries(meetings: store.meetings, profiles: store.voiceProfiles).count)")
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .help("Toplantılarda isim verdiğin ve sesini hatırlattığın kişileri gör")
                 TextField("Arşivde ara", text: $query).textFieldStyle(.roundedBorder)
                     .help("Başlık, transkript, kararlar, görevler, kişi adları ve kendi notlarında ara")
                 if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -76,6 +87,15 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $store.showSettings) { SettingsView(store: store) }
+        .sheet(isPresented: $showPeople) {
+            PeopleView(store: store) { meetingID in
+                guard !store.workInProgress else { return }
+                store.stopPlayback()
+                store.selectedID = meetingID
+                tab = .transcript
+                showPeople = false
+            }
+        }
         .sheet(isPresented: $showImport) { ImportTranscriptView(store: store) }
         .sheet(isPresented: $store.showMicrophoneCheck) { MicrophoneCheckView(store: store) }
         .sheet(item: $sharingMeeting) { SharingView(meeting: $0, notion: store.notion) }
