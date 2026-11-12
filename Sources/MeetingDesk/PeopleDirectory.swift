@@ -40,12 +40,15 @@ enum PeopleDirectory {
             // confirmed links count; unconfirmed name suggestions do not.
             let used = Set(meeting.segments.map(\.speaker) + (meeting.speakerTurns ?? []).map(\.speakerID))
             for (speakerID, association) in meeting.speakerSuggestions ?? [:]
-                where association.automatic && used.contains(speakerID) && currentProfiles[association.profileID] != nil {
+                where association.automatic && used.contains(speakerID) {
                 let key = profileKey(association.profileID)
-                if var row = rows[key] {
-                    row.include(meeting: meeting)
-                    rows[key] = row
+                var row = rows[key] ?? Row(name: displayName(association.name), profileID: nil, sampleCount: 0, lastSeen: nil)
+                row.include(meeting: meeting)
+                if currentProfiles[association.profileID] == nil {
+                    row.considerHistoricalName(displayName(association.name), at: meeting.createdAt,
+                        tie: "\(meeting.id.uuidString):speaker:\(speakerID):\(displayName(association.name))")
                 }
+                rows[key] = row
             }
         }
         return rows.map { id, row in

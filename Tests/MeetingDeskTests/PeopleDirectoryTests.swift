@@ -103,7 +103,13 @@ final class PeopleDirectoryTests: XCTestCase {
         let entry = try XCTUnwrap(PeopleDirectory.entries(meetings: [confirmed, pending, unused], profiles: [voice]).first)
         XCTAssertEqual(entry.meetingIDs, [confirmed.id])
         XCTAssertEqual(entry.lastSeen, confirmed.createdAt)
-        XCTAssertTrue(PeopleDirectory.entries(meetings: [confirmed], profiles: []).isEmpty)
+        let forgotten = try XCTUnwrap(PeopleDirectory.entries(meetings: [confirmed, pending, unused], profiles: []).first)
+        XCTAssertEqual(forgotten.id, entry.id)
+        XCTAssertEqual(forgotten.name, voice.name)
+        XCTAssertNil(forgotten.profileID)
+        XCTAssertEqual(forgotten.sampleCount, 0)
+        XCTAssertEqual(forgotten.meetingIDs, [confirmed.id])
+        XCTAssertEqual(forgotten.lastSeen, confirmed.createdAt)
     }
 
     func testConfirmedTurnOnlyClusterCanLinkWordlessLegacyMeeting() throws {
