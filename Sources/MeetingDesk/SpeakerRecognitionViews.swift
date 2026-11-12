@@ -60,16 +60,16 @@ struct SpeakerRecognitionSettingsView: View {
             Text("İlk kullanımda modeller indirilir. Konuşmacı analizi ve ses profilleri bu Mac’te tutulur.")
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
-            Text("Hatırlanan kişiler · \(store.voiceProfiles.count)").font(.subheadline.weight(.semibold))
+            Text("Hatırlanan sesler · \(store.voiceProfiles.count)").font(.subheadline.weight(.semibold))
             if store.voiceProfiles.isEmpty {
-                Text("Henüz ses profili yok. Bir toplantıda “Konuşmacıları düzenle” ekranını açıp dinlediğin sesi hatırlatabilirsin.")
+                Text("Henüz sesi hatırlanan kişi yok. İsim verdiğin herkesi sol menüdeki Kişiler bölümünde görebilirsin.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 ForEach(store.voiceProfiles) { profile in
                     VoiceProfileEditingRow(store: store, profile: profile)
                 }
             }
-            Text("Ses profilleri kayıt saklama süresinden ayrı tutulur. Bir profili buradan silebilirsin; önceki toplantıların konuşmacı adları korunur.")
+            Text("Ses profilleri kayıt saklama süresinden ayrı tutulur. Bir profili buradan silebilirsin; önceki toplantıların konuşmacı adları korunur. Tüm isimler sol menüdeki Kişiler bölümünde görünür.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

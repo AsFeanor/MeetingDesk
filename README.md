@@ -4,13 +4,13 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-**0.6.1 / yapı 15** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+**0.6.2 / yapı 16** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
 
 ## Sesinden kişi tanıma
 
 Ayarlar’daki **Konuşmacılar ve ses profilleri** bölümünden modelleri bir kez indirin. Bir toplantının transkriptinde **Konuşmacıları düzenle** seçeneğini açın: kısa örneği dinleyip kişiyi seçin veya isim ekleyin. Aynı kişi farklı örneklerde çıkarsa listeden aynı ismi seçebilirsiniz. İsterseniz yalnız o örnek için **Dinlediğim bu sesi sonraki toplantılarda tanı** seçeneğini açıkça onaylayın.
 
-Profiller yalnız bu Mac’te saklanır. Ayarlar’dan isimlerini değiştirebilir veya silebilirsiniz. Ses kayıtlarının saklama süresi profilleri otomatik silmez. Yeni transkriptlerde otomatik tanıma ayrıca açılabilir; belirsiz eşleşmeler onay bekler. Konuşmacı veya isim düzeltmek tek başına profili değiştirmez.
+Kenar çubuğundaki **Kişiler** ekranında eklediğiniz kişileri arayabilir, ilgili toplantılarını açabilir ve hatırlanan ses profillerinin adını değiştirebilir veya sesini unutturabilirsiniz. Yalnız toplantıda isim verdiğiniz kişiler de listelenir. Profiller yalnız bu Mac’te saklanır. Ses kayıtlarının saklama süresi profilleri otomatik silmez. Bir sesi hatırlatmak yeni transkriptlerde otomatik tanımayı da açar; belirsiz eşleşmeler onay bekler. Konuşmacı veya isim düzeltmek tek başına profili değiştirmez.
 
 ## Neler yapıyor?
 
