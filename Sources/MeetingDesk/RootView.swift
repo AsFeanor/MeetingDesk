@@ -375,31 +375,23 @@ struct RootView: View {
                     if meeting.segments.isEmpty {
                         Text(recorder.isRecording ? "Transkript, kayıt bittikten sonra hazırlanır." : "Henüz transkript yok.").foregroundStyle(.secondary).padding(.vertical, 30)
                     } else {
-                        if meeting.transcriptionEngine == ProcessingMode.local.rawValue {
-                            Label(meeting.transcriptSourceSeparated == true ? "Mikrofon ve toplantı sesi ayrı çözüldü. Kaynak etiketleri kişi kimliği belirtmez; kulaklık yankıyı azaltır." : "Birleşik kayıt çözüldü. Yerel mod kişileri otomatik tanımaz; konuşmacı adlarını düzeltebilirsin.", systemImage: "person.crop.circle.badge.questionmark")
+                        MeetingSpeakerControls(store: store, meeting: meeting)
+                        if meeting.transcriptionEngine == ProcessingMode.local.rawValue && meeting.speakerRecognitionEngine == nil {
+                            Label(meeting.transcriptSourceSeparated == true ? "Mikrofon ve toplantı sesi ayrı çözüldü. Konuşmacı tanımayla kişileri de ayırabilirsin; kulaklık yankıyı azaltır." : "Birleşik kayıt çözüldü. Konuşmacı tanımayla kişileri ayırabilir, adlarını düzeltebilirsin.", systemImage: "person.crop.circle.badge.questionmark")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                        if meeting.transcriptionEngine != ProcessingMode.local.rawValue { DisclosureGroup("Konuşmacı adlarını düzelt") {
-                            VStack(spacing: 10) {
-                                ForEach(meeting.speakers, id: \.self) { speaker in
-                                    HStack {
-                                        Text(speaker).font(.caption).foregroundStyle(.secondary).frame(width: 135, alignment: .leading)
-                                        TextField("İsim", text: Binding(get: { store.meetings.first { $0.id == meeting.id }?.speakerNames[speaker] ?? speaker }, set: { name in store.update(meeting.id) { $0.speakerNames[speaker] = name; $0.notesNeedRefresh = $0.notes != nil } })).textFieldStyle(.roundedBorder)
-                                    }
-                                }
-                                Text("Etiketler gerçek isimleri otomatik doğrulamaz. Bölüm etiketi varsa, aynı ses farklı bölümlerde ayrı görünebilir.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                            }.padding(.top, 12)
-                        }.disabled(store.isBusy) }
                         ForEach(meeting.segments) { segment in
                             VStack(alignment: .leading, spacing: 10) {
                                 HStack {
-                                    Text(meeting.speakerName(segment.speaker)).font(.callout.weight(.semibold))
+                                    Text(SpeakerPresentation.name(for: segment.speaker, in: meeting)).font(.callout.weight(.semibold))
                                     Button(timeLabel(segment.start)) { store.seek(segment.start) }.buttonStyle(.plain).foregroundStyle(.tint).font(.caption.monospacedDigit())
                                     Spacer()
                                     Button(editSegment == segment.id ? "Bitti" : "Düzelt") { editSegment = editSegment == segment.id ? nil : segment.id }.font(.caption).disabled(store.isBusy)
                                 }
                                 if editSegment == segment.id {
-                                    if meeting.transcriptionEngine == ProcessingMode.local.rawValue {
+                                    if meeting.speakerRecognitionEngine != nil {
+                                        SpeakerAssignmentPicker(store: store, meeting: meeting, segment: segment)
+                                    } else if meeting.transcriptionEngine == ProcessingMode.local.rawValue {
                                         TextField("Bu bölümün konuşmacısı (isteğe bağlı)", text: Binding(get: { store.meetings.first { $0.id == meeting.id }?.segments.first { $0.id == segment.id }?.speaker ?? segment.speaker }, set: { store.nameLocalSpeaker(meetingID: meeting.id, segmentID: segment.id, name: $0) })).textFieldStyle(.roundedBorder).disabled(store.workInProgress)
                                     }
                                     TextEditor(text: Binding(get: { store.meetings.first { $0.id == meeting.id }?.segments.first { $0.id == segment.id }?.text ?? segment.text }, set: { value in store.update(meeting.id) { item in if let index = item.segments.firstIndex(where: { $0.id == segment.id }) { item.segments[index].text = value; item.notesNeedRefresh = item.notes != nil } } }))
@@ -502,7 +494,7 @@ private struct SettingsView: View {
                     Text(transcriptionStatus)
                     Text(summaryStatus)
                 }.font(.caption).foregroundStyle(.secondary)
-                Text("Bu mod konuşmacıları otomatik ayırmaz. Uzun toplantıların özeti bölümler halinde hazırlanır; sonraki bölümde değişen kararları kaynak metinden kontrol et.").font(.caption).foregroundStyle(.secondary)
+                Text("Konuşmacı tanımayı aşağıdaki bölümden açabilirsin. Uzun toplantıların özeti bölümler halinde hazırlanır; sonraki bölümde değişen kararları kaynak metinden kontrol et.").font(.caption).foregroundStyle(.secondary)
             } else {
                 Text("OpenAI API anahtarı").font(.headline)
                 SecureField(store.hasKey ? "Yeni anahtar girerek değiştirebilirsin" : "API anahtarını gir", text: $key).textFieldStyle(.roundedBorder)
@@ -524,6 +516,8 @@ private struct SettingsView: View {
             Toggle("Kayıt sırasında küçük kontrol kartını göster", isOn: $store.showRecordingPanel)
             Text("Karttan süreyi ve ses göstergelerini izleyebilir, duraklatabilir veya bitirip saklayabilirsin. Kartı gizlersen kayıt sürer; menü çubuğundan tekrar açabilirsin.")
                 .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            SpeakerRecognitionSettingsView(store: store)
             Divider()
             AudioRetentionSettingsView(store: store)
             Divider()

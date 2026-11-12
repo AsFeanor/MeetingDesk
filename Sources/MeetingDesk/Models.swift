@@ -39,6 +39,8 @@ struct TranscriptSegment: Codable, Identifiable, Equatable {
     var start: Double
     var end: Double
     var text: String
+    var words: [TranscriptWord]? = nil
+    var audioSource: SpeakerAudioSource? = nil
 }
 
 struct EvidenceItem: Codable, Identifiable, Equatable {
@@ -102,6 +104,10 @@ struct Meeting: Codable, Identifiable, Equatable {
     var audioSavedAt: Date?
     var audioDeletedAt: Date?
     var audioDeletionPending: Bool?
+    var speakerTurns: [SpeakerTurn]?
+    var speakerSuggestions: [String: SpeakerIdentitySuggestion]?
+    var speakerRecognitionEngine: String?
+    var speakerRecognitionNotice: String?
 
     func speakerName(_ id: String) -> String { speakerNames[id] ?? id }
     var speakers: [String] { Array(Set(segments.map(\.speaker))).sorted() }

@@ -147,7 +147,8 @@ struct ChannelTranscriptionService {
                 throw MeetingError.message("\(source.label) transkriptinin zaman bilgileri geçersiz olduğu için sonuç kaydedilmedi.")
             }
             let segment = TranscriptSegment(id: "\(source.prefix)-\(index + 1)", speaker: source.label,
-                                            start: original.start, end: original.end, text: clean)
+                                            start: original.start, end: original.end, text: clean, words: original.words,
+                                            audioSource: source == .microphone ? .microphone : source == .system ? .system : .mixed)
             tagged.append(TaggedSegment(segment: segment, sourceOrder: source.order, index: index))
         }
         return tagged
