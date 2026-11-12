@@ -130,6 +130,75 @@ final class SpeakerDiarizationEngineTests: XCTestCase {
         XCTAssertNotEqual(try SpeakerDiarizationEngine.modelFingerprint(in: folder), original)
     }
 
+    func testExcerptConversionSeeksToSelectedWindowAndKeepsOnlyItsTimeline() throws {
+        let folder = try SpeakerTestAudio.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("longer-source.caf")
+        try SpeakerTestAudio.write(url: url, sampleRate: 48_000, channels: 2, duration: 12, leadingSilence: 6)
+        let excerpt = try SpeakerAudioInput.make(url: url, range: 5.5..<6.5)
+        defer { try? excerpt.cleanup() }
+        XCTAssertEqual(excerpt.duration, 1, accuracy: 0.002)
+        XCTAssertLessThanOrEqual(abs(excerpt.sampleCount - 16_000), 32)
+        let silence = try excerpt.samples(in: 0..<0.4)
+        let speech = try excerpt.samples(in: 0.6..<0.9)
+        XCTAssertLessThan(silence.map(abs).max() ?? 1, 1e-6)
+        XCTAssertGreaterThan(speech.map(abs).max() ?? 0, 0.05)
+        XCTAssertThrowsError(try excerpt.samples(in: 1..<2))
+        try excerpt.cleanup()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: excerpt.folder.path))
+        let original = try AVAudioFile(forReading: url)
+        XCTAssertEqual(Double(original.length) / original.processingFormat.sampleRate, 12, accuracy: 0.002)
+    }
+
+    func testExcerptStopsAtSelectedEndEvenIfSpeechContinuesInOriginal() throws {
+        let folder = try SpeakerTestAudio.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("speech-after-selection.caf")
+        try SpeakerTestAudio.write(url: url, sampleRate: 48_000, duration: 8, leadingSilence: 6)
+        let silentExcerpt = try SpeakerAudioInput.make(url: url, range: 5..<6)
+        defer { try? silentExcerpt.cleanup() }
+        XCTAssertEqual(silentExcerpt.duration, 1, accuracy: 0.002)
+        XCTAssertTrue(try silentExcerpt.samples(in: 0..<silentExcerpt.duration).allSatisfy { $0 == 0 })
+        let tail = try SpeakerAudioInput.make(url: url, range: 7..<8)
+        defer { try? tail.cleanup() }
+        XCTAssertEqual(tail.duration, 1, accuracy: 0.002)
+        XCTAssertGreaterThan(try tail.samples(in: 0.1..<0.9).map(abs).max() ?? 0, 0.05)
+    }
+
+    func testExcerptRejectsEmptyNegativeNonFiniteAndPastEOFRanges() throws {
+        let folder = try SpeakerTestAudio.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("range-validation.caf")
+        try SpeakerTestAudio.write(url: url, sampleRate: 16_000, duration: 8)
+        for range in [0.0..<0.0, -1.0..<1.0, 7.0..<8.1, 8.0..<9.0, 0.0..<Double.infinity, 1e100..<1e101] {
+            XCTAssertThrowsError(try SpeakerAudioInput.make(url: url, range: range))
+        }
+    }
+
+    func testExcerptCancellationAndInvalidMetadataCannotStartModelDownloads() async throws {
+        let engine = SpeakerDiarizationEngine()
+        let valid = SpeakerReviewSample(id: "public-clip", speakerID: "system:A", source: .system, start: 60, end: 68)
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await engine.sampleExcerpt(audioURL: URL(fileURLWithPath: "/not-a-recording.wav"), sample: valid)
+        }
+        do { _ = try await task.value; XCTFail("Canceled excerpt enrollment must not prepare models") }
+        catch is CancellationError { }
+        var invalid = [valid, valid, valid, valid, valid, valid]
+        invalid[0].start = Double.nan
+        invalid[1].end = Double.infinity
+        invalid[2].end = 63.3
+        invalid[3].source = .microphone
+        invalid[4].id = ""
+        invalid[5].end = 100
+        for sample in invalid {
+            do {
+                _ = try await engine.sampleExcerpt(audioURL: URL(fileURLWithPath: "/not-a-recording.wav"), sample: sample)
+                XCTFail("Invalid excerpt metadata must fail before model preparation")
+            } catch SpeakerEngineError.invalidTimeline { }
+        }
+    }
+
     private func turn(_ speaker: String, _ start: Double, _ end: Double) -> SpeakerTurn {
         SpeakerTurn(speakerID: "system:\(speaker)", source: .system, start: start, end: end)
     }

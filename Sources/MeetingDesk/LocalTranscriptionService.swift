@@ -128,14 +128,13 @@ struct LocalTranscriptionService {
     }
 
     @available(macOS 26, *)
-    private func timedWords(_ text: AttributedString) -> [TranscriptWord]? {
-        let units = text.runs.compactMap { run -> TranscriptWord? in
-            guard let range = run.audioTimeRange else { return nil }
-            return TranscriptWord(text: String(text[run.range].characters), start: range.start.seconds, end: range.end.seconds)
+    private func timedWords(_ text: AttributedString, start: Double, end: Double) -> [TranscriptWord]? {
+        let fragments = text.runs.map { run -> TimedSpeechTextFragment in
+            let range = run.audioTimeRange
+            return TimedSpeechTextFragment(text: String(text[run.range].characters),
+                                          start: range?.start.seconds, end: range?.end.seconds)
         }
-        // Partial timing must not silently drop un-timed text during speaker alignment.
-        guard !units.isEmpty, units.map(\.text).joined() == String(text.characters) else { return nil }
-        return units
+        return TimedSpeechText.words(from: fragments, start: start, end: end)
     }
 
     @available(macOS 26, *)
@@ -147,13 +146,52 @@ struct LocalTranscriptionService {
             guard result.isFinal else { continue }
             // Both supported Apple transcribers expose text and timing in the same result shape.
             if let speech = result as? SpeechTranscriber.Result {
-                try assembler.append(text: String(speech.text.characters), start: speech.range.start.seconds, end: speech.range.end.seconds, words: timedWords(speech.text))
+                try assembler.append(text: String(speech.text.characters), start: speech.range.start.seconds, end: speech.range.end.seconds, words: timedWords(speech.text, start: speech.range.start.seconds, end: speech.range.end.seconds))
             } else if let dictation = result as? DictationTranscriber.Result {
-                try assembler.append(text: String(dictation.text.characters), start: dictation.range.start.seconds, end: dictation.range.end.seconds, words: timedWords(dictation.text))
+                try assembler.append(text: String(dictation.text.characters), start: dictation.range.start.seconds, end: dictation.range.end.seconds, words: timedWords(dictation.text, start: dictation.range.start.seconds, end: dictation.range.end.seconds))
             } else { throw MeetingError.message("Apple yerel transkript sonucu okunamadı.") }
         }
         try Task.checkCancellation()
         return assembler.segments
+    }
+}
+
+/// A pure representation of native attributed-text runs. Missing times are
+/// retained so punctuation/spacing cannot accidentally discard every word time.
+struct TimedSpeechTextFragment {
+    var text: String
+    var start: Double? = nil
+    var end: Double? = nil
+}
+
+enum TimedSpeechText {
+    static func words(from fragments: [TimedSpeechTextFragment], start: Double, end: Double) -> [TranscriptWord]? {
+        guard start.isFinite, end.isFinite, start >= 0, end > start else { return nil }
+        let nonSpeech = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+        var words: [TranscriptWord] = []
+        var prefix = ""
+        for fragment in fragments where !fragment.text.isEmpty {
+            switch (fragment.start, fragment.end) {
+            case let (.some(lower), .some(upper)):
+                guard lower.isFinite, upper.isFinite, lower >= start, upper <= end, upper >= lower else { return nil }
+                if let previous = words.last {
+                    guard lower >= previous.start, upper >= previous.end else { return nil }
+                }
+                words.append(TranscriptWord(text: prefix + fragment.text, start: lower, end: upper))
+                prefix = ""
+            case (.none, .none):
+                // These characters are formatting attached to a neighboring
+                // timed word. Untimed lexical text must never receive guessed times.
+                guard fragment.text.unicodeScalars.allSatisfy({ nonSpeech.contains($0) }) else { return nil }
+                if words.isEmpty { prefix += fragment.text }
+                else { words[words.count - 1].text += fragment.text }
+            default:
+                return nil
+            }
+        }
+        guard !words.isEmpty, prefix.isEmpty,
+              words.map(\.text).joined() == fragments.map(\.text).joined() else { return nil }
+        return words
     }
 }
 

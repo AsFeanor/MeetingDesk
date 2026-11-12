@@ -5,14 +5,31 @@ import SwiftUI
 /// human-readable labels without exposing the recognizer's internal identifiers.
 enum SpeakerPresentation {
     static func name(for speakerID: String, in meeting: Meeting) -> String {
-        if let name = meeting.speakerNames[speakerID]?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+        if let personID = meeting.speakerReviewAssignments?[speakerID],
+           let person = meeting.speakerReviewPeople?.first(where: { $0.id == personID }) {
+            return person.name
+        }
+        if let match = meeting.speakerSuggestions?[speakerID], match.automatic {
+            return match.name
+        }
+        if let name = meeting.speakerNames[speakerID]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !isFallbackName(name, speakerID: speakerID) {
             return name
         }
-        if meeting.speakerTurns?.contains(where: { $0.speakerID == speakerID }) == true,
-           let index = meeting.speakers.firstIndex(of: speakerID) {
-            return "Konuşmacı \(index + 1)"
+        if let index = SpeakerReviewPolicy.speakerIDs(in: meeting).firstIndex(of: speakerID) {
+            return "Ses \(index + 1)"
         }
         return speakerID
+    }
+
+    static func names(in meeting: Meeting) -> [String: String] {
+        let ids = Set(SpeakerReviewPolicy.speakerIDs(in: meeting)).union(meeting.speakers)
+        return Dictionary(uniqueKeysWithValues: ids.map { ($0, name(for: $0, in: meeting)) })
+    }
+
+    private static func isFallbackName(_ name: String, speakerID: String) -> Bool {
+        name.isEmpty || name == speakerID || ["Mikrofon", "Toplantı sesi", "Konuşma"].contains(name)
+            || name.range(of: "^(Konuşmacı|Ses) [0-9]+$", options: .regularExpression) != nil
     }
 }
 
@@ -45,7 +62,7 @@ struct SpeakerRecognitionSettingsView: View {
             Divider()
             Text("Hatırlanan kişiler · \(store.voiceProfiles.count)").font(.subheadline.weight(.semibold))
             if store.voiceProfiles.isEmpty {
-                Text("Henüz ses profili yok. Bir toplantının transkriptinden “Sesini hatırla” seçeneğini kullan.")
+                Text("Henüz ses profili yok. Bir toplantıda “Konuşmacıları düzenle” ekranını açıp dinlediğin sesi hatırlatabilirsin.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 ForEach(store.voiceProfiles) { profile in
@@ -99,199 +116,77 @@ private struct VoiceProfileEditingRow: View {
 
 struct MeetingSpeakerControls: View {
     @ObservedObject var store: AppStore
+    @State private var showReanalysisConfirmation = false
     let meeting: Meeting
-    @State private var enrollment: SpeakerEnrollmentRequest?
-    @State private var showSpeakerNames = true
+    var onReview: (String?) -> Void
 
     private var unavailable: Bool { store.workInProgress || store.preparingSpeakerModels }
     private var hasAudio: Bool { !store.playbackSources(for: meeting).isEmpty }
+    private var speakerIDs: [String] { SpeakerReviewPolicy.speakerIDs(in: meeting) }
+    private var hasVoices: Bool { !(meeting.speakerTurns ?? []).isEmpty && !speakerIDs.isEmpty }
+    private var people: [SpeakerReviewPerson] { meeting.speakerReviewPeople ?? [] }
+    private var namedPeopleCount: Int {
+        let valid = Set(people.map(\.id))
+        return Set(speakerIDs.compactMap { meeting.speakerReviewAssignments?[$0] }.filter { valid.contains($0) }).count
+    }
+    private var unnamedCount: Int {
+        let valid = Set(people.map(\.id))
+        return speakerIDs.filter { id in
+            guard let person = meeting.speakerReviewAssignments?[id] else { return true }
+            return !valid.contains(person)
+        }.count
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Konuşmacılar", systemImage: "person.2.wave.2").font(.headline)
-                Spacer()
-                Button { store.identifySpeakers() } label: {
-                    Label(meeting.speakerRecognitionEngine == nil ? "Konuşmacıları tanı" : "Yeniden tanı", systemImage: "waveform")
-                }
-                .disabled(unavailable || !hasAudio || !store.speakerModelsReady)
-                .accessibilityHint("Bu toplantının konuşmacılarını ayırır ve kayıtlı ses profilleriyle karşılaştırır")
-            }
-            if !hasAudio {
-                Text("Ses kaydı saklanmadığı için bu toplantıda ses analizi yapılamaz. Konuşmacı adlarını yine düzeltebilirsin.")
-                    .font(.caption).foregroundStyle(.secondary)
-            } else if !store.speakerModelsReady {
-                HStack(spacing: 10) {
-                    if store.preparingSpeakerModels { ProgressView().controlSize(.small) }
-                    Text("Konuşmacı tanıma için ses modellerini bir kez indir.").font(.caption).foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                    Button("Modelleri indir") { store.prepareSpeakerModels() }.disabled(unavailable)
-                }
-            }
-            if store.speakerModelsReady && !store.speakerRecognitionEnabled {
-                Text("Yeni transkriptlerde otomatik tanıma kapalı. Ayarlar → Konuşmacılar ve ses profilleri bölümünden açabilirsin.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if meeting.speakerRecognitionEngine != nil {
-                Label("Konuşmacılar seslerine göre ayrıldı. İsimleri kontrol edip düzeltebilirsin.", systemImage: "person.crop.circle.badge.checkmark")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if let notice = meeting.speakerRecognitionNotice, !notice.isEmpty {
-                Label(notice, systemImage: "exclamationmark.bubble")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            DisclosureGroup("İsimler ve hatırlanan sesler", isExpanded: $showSpeakerNames) {
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(meeting.speakers, id: \.self) { speakerID in
-                        speakerRow(speakerID)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Konuşmacılar", systemImage: "person.2.wave.2").font(.headline)
+                    if hasVoices {
+                        Text(namedPeopleCount == 0 ? "\(speakerIDs.count) kısa örneği dinleyip isimleri kontrol et." : (unnamedCount == 0 ? "\(namedPeopleCount) kişi seçildi" : "\(namedPeopleCount) kişi seçildi · \(unnamedCount) örnek kaldı"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Kısa örnekleri dinleyip kimin konuştuğunu seç.").font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("Burada isim düzeltmek ses profilini değiştirmez. Ses profilini yalnız “Sesini hatırla” ile onayladığında kaydederiz.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }.padding(.top, 12)
-            }
-        }
-        .sheet(item: $enrollment) { request in
-            SpeakerEnrollmentView(store: store, request: request)
-        }
-    }
-
-    private func speakerRow(_ speakerID: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Text("Konuşmacı \((meeting.speakers.firstIndex(of: speakerID) ?? 0) + 1)")
-                    .font(.caption).foregroundStyle(.secondary).frame(width: 105, alignment: .leading)
-                TextField("İsim", text: Binding(get: {
-                    store.meetings.first(where: { $0.id == meeting.id })?.speakerNames[speakerID] ?? ""
-                }, set: { name in
-                    guard !unavailable else { return }
-                    store.update(meeting.id) {
-                        $0.speakerNames[speakerID] = name
-                        $0.speakerSuggestions?.removeValue(forKey: speakerID)
-                        $0.notesNeedRefresh = $0.notes != nil
+                }
+                Spacer(minLength: 8)
+                if hasVoices {
+                    Button("Konuşmacıları düzenle") { onReview(nil) }
+                        .buttonStyle(.borderedProminent).disabled(unavailable)
+                        .accessibilityHint("Ses örneklerini tek tek dinleyip kişi seçme ekranını açar")
+                    Menu {
+                        Button("Sesleri yeniden ayır") {
+                            if meeting.speakerReviewAssignments?.isEmpty == false { showReanalysisConfirmation = true }
+                            else { store.identifySpeakers() }
+                        }
+                            .disabled(unavailable || !hasAudio || !store.speakerModelsReady)
+                        if let notice = meeting.speakerRecognitionNotice, !notice.isEmpty {
+                            Text(notice)
+                        }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                        .menuStyle(.borderlessButton).fixedSize()
+                        .accessibilityLabel("Konuşmacı seçenekleri")
+                } else if hasAudio {
+                    if store.preparingSpeakerModels {
+                        ProgressView().controlSize(.small)
+                    } else if !store.speakerModelsReady {
+                        Button("Ses modellerini indir") { store.prepareSpeakerModels() }.disabled(unavailable)
+                    } else {
+                        Button("Konuşmacıları bul") { store.identifySpeakers() }
+                            .buttonStyle(.borderedProminent).disabled(unavailable)
                     }
-                }))
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("\(SpeakerPresentation.name(for: speakerID, in: meeting)) için konuşmacı adı")
-                .disabled(unavailable)
-            }
-            if let suggestion = meeting.speakerSuggestions?[speakerID],
-               store.voiceProfiles.contains(where: { $0.id == suggestion.profileID }) {
-                if suggestion.automatic {
-                    Label("Kayıtlı ses profiliyle eşleşti", systemImage: "checkmark.circle")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    HStack(spacing: 10) {
-                        Text("Bu kişi \(suggestion.name) mi?").font(.callout)
-                        Button("Evet") { store.confirmSpeakerMatch(speakerID, profileID: suggestion.profileID) }
-                            .accessibilityLabel("\(SpeakerPresentation.name(for: speakerID, in: meeting)) için \(suggestion.name) eşleşmesini onayla")
-                        Button("Değil") { store.dismissSpeakerSuggestion(speakerID) }
-                            .accessibilityLabel("\(SpeakerPresentation.name(for: speakerID, in: meeting)) için \(suggestion.name) eşleşmesini reddet")
-                    }.disabled(unavailable)
                 }
             }
-            if canRemember(speakerID) {
-                Button {
-                    let match = meeting.speakerSuggestions?[speakerID]
-                    let knownProfileID = match?.automatic == true && store.voiceProfiles.contains(where: { $0.id == match?.profileID }) ? match?.profileID : nil
-                    enrollment = SpeakerEnrollmentRequest(meetingID: meeting.id, speakerID: speakerID,
-                                                          name: meeting.speakerNames[speakerID] ?? "", profileID: knownProfileID)
-                } label: {
-                    Label("Sesini hatırla", systemImage: "person.crop.circle.badge.plus")
-                }
-                .font(.caption)
-                .disabled(unavailable || !store.speakerModelsReady)
-                .accessibilityLabel("\(SpeakerPresentation.name(for: speakerID, in: meeting)) sesini hatırla")
+            if !hasAudio && !hasVoices {
+                Text("Ses kaydı bulunmadığı için örnek dinlenemiyor.").font(.caption).foregroundStyle(.secondary)
             }
         }
-    }
-
-    private func canRemember(_ speakerID: String) -> Bool {
-        guard let turns = meeting.speakerTurns else { return false }
-        return turns.contains { turn in
-            guard turn.speakerID == speakerID else { return false }
-            let source: PlaybackSource
-            switch turn.source {
-            case .microphone: source = .microphone
-            case .system: source = .system
-            case .mixed: source = .mixed
-            }
-            guard let url = store.library.audioURL(for: meeting, source: source) else { return false }
-            return FileManager.default.fileExists(atPath: url.path)
+        .confirmationDialog("Sesleri yeniden ayır?", isPresented: $showReanalysisConfirmation, titleVisibility: .visible) {
+            Button("Yeniden ayır", role: .destructive) { store.identifySpeakers() }
+            Button("Vazgeç", role: .cancel) {}
+        } message: {
+            Text("Bu toplantıdaki kişi seçimleri yeniden yapılır. Önceki dökümü geri getirebilirsin.")
         }
-    }
-}
-
-private struct SpeakerEnrollmentRequest: Identifiable {
-    let meetingID: UUID
-    let speakerID: String
-    let name: String
-    let profileID: UUID?
-    var id: String { meetingID.uuidString + ":" + speakerID }
-}
-
-private struct SpeakerEnrollmentView: View {
-    @ObservedObject var store: AppStore
-    let request: SpeakerEnrollmentRequest
-    @Environment(\.dismiss) private var dismiss
-    @State private var name: String
-    @State private var profileID: UUID?
-    @State private var agreesToRemember = false
-
-    init(store: AppStore, request: SpeakerEnrollmentRequest) {
-        self.store = store
-        self.request = request
-        _name = State(initialValue: request.name)
-        _profileID = State(initialValue: request.profileID)
-    }
-
-    private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var unavailable: Bool { store.workInProgress || store.preparingSpeakerModels }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Label("Bu sesi hatırla", systemImage: "person.crop.circle.badge.plus").font(.title2.weight(.semibold))
-            Text("Bu kişinin sesini ismiyle eşleştirip sonraki toplantılarda tanımak için bu Mac’te saklayacağız.")
-                .foregroundStyle(.secondary)
-            Picker("Kişi", selection: $profileID) {
-                Text("Yeni kişi").tag(Optional<UUID>.none)
-                ForEach(store.voiceProfiles) { profile in
-                    Text(profile.name).tag(Optional(profile.id))
-                }
-            }
-            .disabled(unavailable)
-            .accessibilityLabel("Ses profilinin ait olduğu kişi")
-            if profileID == nil {
-                TextField("Kişinin adı", text: $name).textFieldStyle(.roundedBorder)
-                    .disabled(unavailable)
-                    .accessibilityLabel("Hatırlanacak kişinin adı")
-            }
-            Text("Yalnız bu kişinin tek başına konuştuğu temiz bölümler kullanılır. Çok kısa veya karışık seslerden profil oluşturulmaz.")
-                .font(.caption).foregroundStyle(.secondary)
-            Toggle(profileID == nil ? "Bu kişinin ses profilini bu Mac’te sakla" : "Bu konuşmadan seçtiğim kişinin ses profiline örnek ekle", isOn: $agreesToRemember)
-                .disabled(unavailable)
-            Text("İstersen Ayarlar → Konuşmacılar ve ses profilleri bölümünden silebilirsin. İsmi veya konuşmacıyı düzeltmek tek başına yeni bir ses örneği kaydetmez.")
-                .font(.caption).foregroundStyle(.secondary)
-            if !store.speakerRecognitionEnabled {
-                Text("Yeni transkriptlerde otomatik tanıma şu anda kapalı. Ayarlar’dan açabilir veya toplantıda “Konuşmacıları tanı” seçeneğini kullanabilirsin.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            HStack {
-                Spacer()
-                Button("Vazgeç") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(profileID == nil ? "Sesini hatırla" : "Örneği ekle") {
-                    guard store.selectedID == request.meetingID else { dismiss(); return }
-                    let selectedName = profileID.flatMap { id in store.voiceProfiles.first(where: { $0.id == id })?.name } ?? cleanName
-                    store.rememberSpeaker(request.speakerID, name: selectedName, profileID: profileID)
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(unavailable || !agreesToRemember || (profileID == nil && cleanName.isEmpty))
-            }
-        }
-        .padding(28)
-        .frame(width: 500)
-        .onChange(of: profileID) { _, _ in agreesToRemember = false }
     }
 }
 
@@ -300,14 +195,38 @@ struct SpeakerAssignmentPicker: View {
     let meeting: Meeting
     let segment: TranscriptSegment
 
+    private func identityKey(_ speakerID: String) -> String {
+        if let personID = meeting.speakerReviewAssignments?[speakerID],
+           meeting.speakerReviewPeople?.contains(where: { $0.id == personID }) == true {
+            return "person:" + personID.uuidString
+        }
+        if let match = meeting.speakerSuggestions?[speakerID], match.automatic {
+            if let person = meeting.speakerReviewPeople?.first(where: { $0.voiceProfileID == match.profileID }) {
+                return "person:" + person.id.uuidString
+            }
+            return "profile:" + match.profileID.uuidString
+        }
+        return "voice:" + speakerID
+    }
+
+    private var choices: [String] {
+        var seen: Set<String> = []
+        return meeting.speakers.filter { seen.insert(identityKey($0)).inserted }
+    }
+
+    private func canonicalSpeaker(_ speakerID: String) -> String {
+        choices.first(where: { identityKey($0) == identityKey(speakerID) }) ?? speakerID
+    }
+
     var body: some View {
         Picker("Bu bölümün konuşmacısı", selection: Binding(get: {
-            store.meetings.first(where: { $0.id == meeting.id })?.segments.first(where: { $0.id == segment.id })?.speaker ?? segment.speaker
+            let current = store.meetings.first(where: { $0.id == meeting.id })?.segments.first(where: { $0.id == segment.id })?.speaker ?? segment.speaker
+            return canonicalSpeaker(current)
         }, set: { speakerID in
             guard store.selectedID == meeting.id else { return }
             store.assignSpeaker(segmentID: segment.id, speakerID: speakerID)
         })) {
-            ForEach(meeting.speakers, id: \.self) { speakerID in
+            ForEach(choices, id: \.self) { speakerID in
                 Text(SpeakerPresentation.name(for: speakerID, in: meeting)).tag(speakerID)
             }
         }

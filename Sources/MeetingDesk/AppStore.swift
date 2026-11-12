@@ -47,6 +47,10 @@ final class AppStore: ObservableObject {
     @Published var playbackTime: Double = 0
     @Published var playbackDuration: Double = 0
     @Published var isPlaying = false
+    @Published var playingSpeakerSampleID: String?
+    private var playbackEndTime: Double?
+    private var playbackStopTimer: Timer?
+
     @Published var playbackSource: PlaybackSource = .mixed {
         didSet { if playbackSource != oldValue { stopPlayback() } }
     }
@@ -198,6 +202,12 @@ final class AppStore: ObservableObject {
                 guard let self, let player = self.player else { return }
                 self.playbackTime = player.currentTime
                 self.isPlaying = player.isPlaying
+                if let end = self.playbackEndTime, player.currentTime >= end {
+                    player.pause()
+                    self.playbackTime = end
+                    self.isPlaying = false
+                    self.playbackEndTime = nil
+                }
             }
         }
     }
@@ -205,6 +215,7 @@ final class AppStore: ObservableObject {
     deinit {
         timer?.invalidate()
         audioRetentionTimer?.invalidate()
+        playbackStopTimer?.invalidate()
     }
 
     func setAudioRetentionPolicy(_ policy: AudioRetentionPolicy) {
@@ -404,6 +415,7 @@ final class AppStore: ObservableObject {
             $0.speechLanguage = language; $0.speakerNames = [:]
             $0.transcriptSourceSeparated = separated
             $0.speakerTurns = nil; $0.speakerSuggestions = nil; $0.speakerRecognitionEngine = nil; $0.speakerRecognitionNotice = nil
+            $0.speakerReviewPeople = nil; $0.speakerReviewAssignments = nil
         }) else { throw MeetingError.message("Transkript kaydedilemedi. Önceki döküm ve ses kaydı korunuyor.") }
         if speakerRecognitionEnabled {
             do { try await recognizeMeeting(id) }
@@ -437,6 +449,8 @@ final class AppStore: ObservableObject {
                 $0.speakerSuggestions = previous.speakerSuggestions
                 $0.speakerRecognitionEngine = previous.speakerRecognitionEngine
                 $0.speakerRecognitionNotice = previous.speakerRecognitionNotice
+                $0.speakerReviewPeople = previous.speakerReviewPeople
+                $0.speakerReviewAssignments = previous.speakerReviewAssignments
             }) else { throw MeetingError.message("Önceki döküm kaydedilemedi; mevcut döküm korundu.") }
             statusMessage = "Önceki döküm geri getirildi. Ses kaydı ve kişisel notlar korundu."
         } catch { errorMessage = error.localizedDescription }
@@ -601,6 +615,8 @@ final class AppStore: ObservableObject {
     func revealArchive() { NSWorkspace.shared.open(library.root) }
 
     func togglePlayback() {
+        playbackStopTimer?.invalidate(); playbackStopTimer = nil
+        playbackEndTime = nil; playingSpeakerSampleID = nil
         guard let meeting = selected, let url = library.audioURL(for: meeting, source: playbackSource), FileManager.default.fileExists(atPath: url.path), !recorder.isRecording else { return }
         do {
             if playbackID != meeting.id {
@@ -617,6 +633,8 @@ final class AppStore: ObservableObject {
     }
 
     func seek(_ time: Double) {
+        playbackStopTimer?.invalidate(); playbackStopTimer = nil
+        playbackEndTime = nil; playingSpeakerSampleID = nil
         guard let meeting = selected, let url = library.audioURL(for: meeting, source: playbackSource), FileManager.default.fileExists(atPath: url.path), !recorder.isRecording else { return }
         do {
             if playbackID != meeting.id {
@@ -631,7 +649,45 @@ final class AppStore: ObservableObject {
         } catch { errorMessage = error.localizedDescription }
     }
 
+    func playSpeakerSample(_ sample: SpeakerReviewSample, meetingID: UUID) {
+        guard !workInProgress, let meeting = selected, meeting.id == meetingID,
+              SpeakerReviewSamples.samples(in: meeting, speakerID: sample.speakerID).contains(sample) else { return }
+        if playingSpeakerSampleID == sample.id, isPlaying {
+            player?.pause(); isPlaying = false
+            return
+        }
+        let source: PlaybackSource
+        switch sample.source { case .microphone: source = .microphone; case .system: source = .system; case .mixed: source = .mixed }
+        guard let url = library.audioURL(for: meeting, source: source), FileManager.default.fileExists(atPath: url.path) else {
+            errorMessage = "Bu örneğin ses kaydı bulunamadı."
+            return
+        }
+        playbackSource = source
+        seek(sample.start)
+        guard let player, player.duration.isFinite, sample.start < player.duration else { return }
+        playbackEndTime = min(sample.end, player.duration)
+        playingSpeakerSampleID = sample.id
+        player.prepareToPlay(); isPlaying = player.play()
+        if isPlaying, let end = playbackEndTime {
+            let timer = Timer(timeInterval: max(0.01, end - sample.start), repeats: false) { [weak self, weak player] _ in
+                Task { @MainActor in
+                    guard let self, let player, self.player === player, self.playingSpeakerSampleID == sample.id else { return }
+                    player.pause(); self.isPlaying = false; self.playbackTime = end
+                    self.playbackEndTime = nil; self.playbackStopTimer = nil
+                }
+            }
+            playbackStopTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+        }
+    }
+
+    func stopSpeakerSample() {
+        if playingSpeakerSampleID != nil { stopPlayback() }
+    }
+
     func stopPlayback() {
+        playbackStopTimer?.invalidate(); playbackStopTimer = nil
+        playbackEndTime = nil; playingSpeakerSampleID = nil
         player?.stop(); player = nil; playbackID = nil
         playbackTime = 0; playbackDuration = 0; isPlaying = false
         if audioRetentionCleanupPending && systemServicesEnabled {

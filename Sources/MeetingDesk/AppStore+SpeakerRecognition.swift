@@ -63,6 +63,7 @@ extension AppStore {
         guard update(id, {
             $0.segments = segments; $0.speakerNames = names
             $0.speakerTurns = allTurns; $0.speakerSuggestions = suggestions
+            $0.speakerReviewPeople = nil; $0.speakerReviewAssignments = nil
             $0.speakerRecognitionEngine = "fluidaudio-0.18.3-campplus-v2"
             $0.speakerRecognitionNotice = original.segments.contains(where: { $0.words == nil })
                 ? "Bu dökümde kelime zamanları bulunmayan bölümler var. Daha hassas konuşmacı ayrımı için dökümü yeniden oluşturabilirsin." : nil

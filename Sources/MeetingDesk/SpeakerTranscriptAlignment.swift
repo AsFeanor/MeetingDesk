@@ -21,7 +21,7 @@ enum SpeakerTranscriptAlignment {
                 var value = original
                 value.audioSource = source
                 value.words = nil
-                value.speaker = bestSpeaker(start: original.start, end: original.end, turns: candidates, minimumCoverage: 0.95, maximumOtherCoverage: 0.05) ?? original.speaker
+                value.speaker = legacySpeaker(start: original.start, end: original.end, turns: candidates) ?? original.speaker
                 result.append(value)
                 continue
             }
@@ -44,6 +44,36 @@ enum SpeakerTranscriptAlignment {
 
     private static func sourceLabel(_ source: SpeakerAudioSource) -> String {
         switch source { case .microphone: return "Mikrofon"; case .system: return "Toplantı sesi"; case .mixed: return "Konuşma" }
+    }
+
+    /// Pauses outside detected speech are not evidence of another person. A
+    /// wordless utterance can still be attributed when its detected speech has
+    /// one clear voice; a meaningful second voice prevents whole-utterance naming.
+    private static func legacySpeaker(start: Double, end: Double, turns: [SpeakerTurn]) -> String? {
+        let duration = end - start
+        guard start.isFinite, end.isFinite, start >= 0, duration.isFinite, duration > 0 else { return nil }
+        let grouped = Dictionary(grouping: turns, by: \.speakerID)
+        var seconds: [(String, Double)] = []
+        for (speaker, values) in grouped where !speaker.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let intervals = values.map { (max(start, $0.start), min(end, $0.end)) }
+                .filter { $0.1 > $0.0 }.sorted { $0.0 < $1.0 }
+            var covered = 0.0
+            var previousEnd = start
+            for interval in intervals {
+                covered += max(0, interval.1 - max(interval.0, previousEnd))
+                previousEnd = max(previousEnd, interval.1)
+            }
+            if covered > 0 { seconds.append((speaker, covered)) }
+        }
+        seconds.sort { $0.1 == $1.1 ? $0.0 < $1.0 : $0.1 > $1.1 }
+        guard let best = seconds.first, best.1 >= min(0.3, duration * 0.6) else { return nil }
+        let other = seconds.dropFirst().reduce(0.0) { $0 + $1.1 }
+        let detected = best.1 + other
+        // Count overlapping secondary evidence too; a long majority turn cannot
+        // erase another person's short commitment. Only <=50 ms of SDK jitter
+        // is tolerated, and only below 2% of all detected speaker-seconds.
+        guard other <= 0.05, detected.isFinite, best.1 / detected >= 0.98 else { return nil }
+        return best.0
     }
 
     private static func bestSpeaker(start: Double, end: Double, turns: [SpeakerTurn], minimumCoverage: Double, maximumOtherCoverage: Double = 0.25) -> String? {

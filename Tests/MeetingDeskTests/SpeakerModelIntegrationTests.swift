@@ -24,9 +24,9 @@ final class SpeakerModelIntegrationTests: XCTestCase {
         let engine = SpeakerDiarizationEngine(cacheRoot: cache)
         try await engine.prepareModels()
 
-        let enrollment = try await engine.sample(audioURL: enrollURL, speakerID: "system:enrollment", turns: [
-            fullTurn("enrollment", duration: Double(enrollmentAudio.count) / 16_000)
-        ])
+        let enrollment = try await engine.sampleExcerpt(audioURL: enrollURL,
+            sample: SpeakerReviewSample(id: "public-enrollment", speakerID: "system:enrollment", source: .system,
+                                        start: 0, end: min(8, Double(enrollmentAudio.count) / 16_000)))
         XCTAssertEqual(enrollment.embedding.count, 192)
         XCTAssertTrue(enrollment.modelID.hasPrefix("campplus-coreml-v2-192-"))
         XCTAssertGreaterThanOrEqual(enrollment.cleanDuration, 3)
@@ -37,9 +37,9 @@ final class SpeakerModelIntegrationTests: XCTestCase {
         XCTAssertEqual(restored, profiles)
 
         // A different utterance from the same documented LibriSpeech speaker.
-        let known = try await engine.sample(audioURL: knownURL, speakerID: "system:held-out", turns: [
-            fullTurn("held-out", duration: Double(knownAudio.count) / 16_000)
-        ])
+        let known = try await engine.sampleExcerpt(audioURL: knownURL,
+            sample: SpeakerReviewSample(id: "public-held-out", speakerID: "system:held-out", source: .system,
+                                        start: 0, end: min(8, Double(knownAudio.count) / 16_000)))
         let knownMatch = try XCTUnwrap(VoiceProfileMatcher.match(sample: known, profiles: restored), "Held-out same-speaker speech must produce a recognition suggestion")
         XCTAssertEqual(knownMatch.profileID, profiles[0].id)
         let other = try await engine.sample(audioURL: otherURL, speakerID: "system:other", turns: [

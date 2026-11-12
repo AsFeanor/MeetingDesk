@@ -13,6 +13,7 @@ struct RootView: View {
     @State private var editSegment: String?
     @State private var sharingMeeting: Meeting?
     @State private var editingMeeting: Meeting?
+    @State private var reviewingSpeaker: SpeakerReviewRequest?
 
     private var filtered: [Meeting] {
         store.meetings.filter { MeetingArchiveSearch.matches($0, query: query) }
@@ -78,6 +79,9 @@ struct RootView: View {
         .sheet(isPresented: $showImport) { ImportTranscriptView(store: store) }
         .sheet(isPresented: $store.showMicrophoneCheck) { MicrophoneCheckView(store: store) }
         .sheet(item: $sharingMeeting) { SharingView(meeting: $0, notion: store.notion) }
+        .sheet(item: $reviewingSpeaker) { request in
+            SpeakerReviewWizard(store: store, meetingID: request.meetingID, initialSpeakerID: request.initialSpeakerID)
+        }
         .sheet(item: $editingMeeting) { meeting in
             NotesEditingView(meeting: meeting) { notes in
                 try store.saveEditedNotes(notes, meetingID: meeting.id)
@@ -86,7 +90,7 @@ struct RootView: View {
         .alert("İşlem tamamlanamadı", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button("Tamam") { store.errorMessage = nil }
         } message: { Text(store.errorMessage ?? "") }
-        .onChange(of: store.selectedID) { _, _ in store.stopPlayback(); store.playbackSource = .mixed; focusID = nil; editSegment = nil }
+        .onChange(of: store.selectedID) { _, _ in store.stopPlayback(); store.playbackSource = .mixed; focusID = nil; editSegment = nil; reviewingSpeaker = nil }
     }
 
     private var welcome: some View {
@@ -369,23 +373,29 @@ struct RootView: View {
     }
 
     private func transcript(_ meeting: Meeting) -> some View {
-        ScrollViewReader { proxy in
+        let reviewSpeakerIDs = Set(SpeakerReviewPolicy.speakerIDs(in: meeting))
+            .intersection(Set((meeting.speakerTurns ?? []).map(\.speakerID)))
+        let displayNames = SpeakerPresentation.names(in: meeting)
+        return ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                LazyVStack(alignment: .leading, spacing: 20) {
                     if meeting.segments.isEmpty {
                         Text(recorder.isRecording ? "Transkript, kayıt bittikten sonra hazırlanır." : "Henüz transkript yok.").foregroundStyle(.secondary).padding(.vertical, 30)
                     } else {
-                        MeetingSpeakerControls(store: store, meeting: meeting)
-                        if meeting.transcriptionEngine == ProcessingMode.local.rawValue && meeting.speakerRecognitionEngine == nil {
-                            Label(meeting.transcriptSourceSeparated == true ? "Mikrofon ve toplantı sesi ayrı çözüldü. Konuşmacı tanımayla kişileri de ayırabilirsin; kulaklık yankıyı azaltır." : "Birleşik kayıt çözüldü. Konuşmacı tanımayla kişileri ayırabilir, adlarını düzeltebilirsin.", systemImage: "person.crop.circle.badge.questionmark")
-                                .font(.caption).foregroundStyle(.secondary)
+                        MeetingSpeakerControls(store: store, meeting: meeting) { speakerID in
+                            reviewingSpeaker = SpeakerReviewRequest(meetingID: meeting.id, initialSpeakerID: speakerID)
                         }
                         ForEach(meeting.segments) { segment in
                             VStack(alignment: .leading, spacing: 10) {
                                 HStack {
-                                    Text(SpeakerPresentation.name(for: segment.speaker, in: meeting)).font(.callout.weight(.semibold))
+                                    Text(displayNames[segment.speaker] ?? segment.speaker).font(.callout.weight(.semibold))
                                     Button(timeLabel(segment.start)) { store.seek(segment.start) }.buttonStyle(.plain).foregroundStyle(.tint).font(.caption.monospacedDigit())
                                     Spacer()
+                                    if reviewSpeakerIDs.contains(segment.speaker) {
+                                        Button("Bu kim?") {
+                                            reviewingSpeaker = SpeakerReviewRequest(meetingID: meeting.id, initialSpeakerID: segment.speaker)
+                                        }.font(.caption).disabled(store.workInProgress)
+                                    }
                                     Button(editSegment == segment.id ? "Bitti" : "Düzelt") { editSegment = editSegment == segment.id ? nil : segment.id }.font(.caption).disabled(store.isBusy)
                                 }
                                 if editSegment == segment.id {
