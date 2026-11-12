@@ -4,4 +4,6 @@
 - Kişinin ilgili toplantıları açılabilir. Hatırlanan ses profilinin adı değiştirilebilir veya **Sesini unut** seçilebilir; toplantılardaki yazılı isimler korunur.
 - Yerel özette görev cümlesi kaynakta kesin olarak bulunduğu halde modelin kaynak etiketini eksik yazması yüzünden tüm notun durması düzeltildi. Eksik bağlantı yalnız kaynakta doğrulanabiliyorsa tamamlanır; diğer eşleştirme hatalarında aynı bölüm bir kez yeniden denenir. Kaynak ve aksiyon kontrolleri korunur.
 
+- Aksiyonun kararlaştırılma durumuna ait model yanıtı beklenen biçimde gelmezse, aynı görev ve tam kaynaklarla bir kez yeniden üretilir. Geçersiz yanıt “aksiyon yok” sayılmaz; sınıflandırma ve kaynak kontrolleri korunur.
+
 Mevcut toplantıda **Özet oluştur** veya **Özeti yenile** kullanılabilir; transkripti yeniden üretmek gerekmez. Kişi listesi ve yerel özet işlemleri bu Mac’te kalır.
