@@ -687,9 +687,6 @@ struct LocalSummaryService {
             let container = try decoder.container(keyedBy: WireKey.self)
             try requireWireKeys(container, expected: ["sourceObservation", "commitmentState"], codingPath: decoder.codingPath)
             sourceObservation = try container.decode(String.self, forKey: WireKey(stringValue: "sourceObservation"))
-            guard !sourceObservation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Missing factual source observation."))
-            }
             commitmentState = try container.decode(TaskStatusCode.self, forKey: WireKey(stringValue: "commitmentState"))
         }
     }
@@ -701,9 +698,6 @@ struct LocalSummaryService {
             let container = try decoder.container(keyedBy: WireKey.self)
             try requireWireKeys(container, expected: ["sourceObservation", "personChoice"], codingPath: decoder.codingPath)
             sourceObservation = try container.decode(String.self, forKey: WireKey(stringValue: "sourceObservation"))
-            guard !sourceObservation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Missing factual source observation."))
-            }
             personChoice = try container.decode(String.self, forKey: WireKey(stringValue: "personChoice"))
         }
     }
