@@ -235,6 +235,8 @@ enum MeetingExport {
         if let notes = meeting.notes {
             if meeting.notesEngine == ProcessingMode.local.rawValue {
                 notice("Notlar Apple’ın yerel modeliyle oluşturuldu. Kaynaklar kontrol edilmelidir.")
+            } else if meeting.notesEngine == "local-qwen3.5:9b" {
+                notice("Notlar bu Mac’te Qwen3.5 ile oluşturuldu. Kaynaklar kontrol edilmelidir.")
             }
             if meeting.notesNeedRefresh { notice("Transkript, özet dili veya şablon değişti. Bu özet eski sürüme dayanıyor; yeniden oluşturulmalı.") }
             if meeting.notesAreReviewed, let reviewedAt = meeting.reviewedAt {

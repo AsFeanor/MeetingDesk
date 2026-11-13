@@ -41,6 +41,18 @@ final class AppStore: ObservableObject {
     @Published var processingMode: ProcessingMode = ProcessingMode(rawValue: UserDefaults.standard.string(forKey: "meetingdesk.processingMode") ?? "") ?? .local {
         didSet { UserDefaults.standard.set(processingMode.rawValue, forKey: "meetingdesk.processingMode") }
     }
+    @Published var localSummaryBackend: LocalSummaryBackend = .qwen {
+        didSet { localSummarySettingsDefaults.set(localSummaryBackend.rawValue, forKey: LocalSummaryBackend.defaultsKey) }
+    }
+    @Published private(set) var localSummaryServiceStatus: OllamaSummaryStatus = .serviceUnavailable
+    @Published private(set) var localSummaryModelStatus = "Özet modelinin hazır olup olmadığını kontrol et."
+    @Published private(set) var localSummaryModelReady = false
+    @Published private(set) var localSummaryNeedsAppUpdate = false
+    @Published private(set) var localSummaryModelProgress: Double?
+    @Published private(set) var preparingLocalSummaryModel = false
+    private let localSummarySettingsDefaults: UserDefaults
+    private let localSummaryRuntime = SummaryModelRuntime()
+    private var localSummaryPreparationID: UUID?
     @Published var transcriptionLanguage = UserDefaults.standard.string(forKey: "meetingdesk.transcriptionLanguage") ?? "Türkçe" {
         didSet { UserDefaults.standard.set(transcriptionLanguage, forKey: "meetingdesk.transcriptionLanguage") }
     }
@@ -87,7 +99,7 @@ final class AppStore: ObservableObject {
     private static let audioRetentionPolicyKey = "meetingdesk.audioRetentionPolicy"
 
     var hasPendingRecordingSession: Bool { recordingID != nil }
-    var workInProgress: Bool { isBusy || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession || notion.isExporting }
+    var workInProgress: Bool { isBusy || preparingLocalSummaryModel || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession || notion.isExporting }
     var selected: Meeting? { meetings.first { $0.id == selectedID } }
     var recordingMeeting: Meeting? { meetings.first { $0.id == recordingID } }
     var hasPreviousTranscript: Bool { selected.map { library.hasTranscriptVersion(for: $0.id) } ?? false }
@@ -105,6 +117,106 @@ final class AppStore: ObservableObject {
             return FileManager.default.fileExists(atPath: url.path)
         }
     }
+    func refreshLocalSummaryModelStatus() async {
+        guard localSummaryBackend == .qwen, !preparingLocalSummaryModel else { return }
+        guard !workInProgress else { return }
+        guard SummaryModelRuntime.isBundled else {
+            localSummaryServiceStatus = .updateRequired
+            localSummaryModelReady = false
+            localSummaryNeedsAppUpdate = true
+            localSummaryModelStatus = SummaryModelRuntimeError.missingRuntime.localizedDescription
+            return
+        }
+        let status = await OllamaSummaryService().status()
+        guard !Task.isCancelled, localSummaryBackend == .qwen, !workInProgress else { return }
+        applyLocalSummaryStatus(status)
+    }
+
+    private func applyLocalSummaryStatus(_ status: OllamaSummaryStatus) {
+        localSummaryServiceStatus = status
+        localSummaryModelReady = status == .ready
+        localSummaryNeedsAppUpdate = status == .updateRequired || !SummaryModelRuntime.isBundled
+        localSummaryModelStatus = status.label
+    }
+
+    /// Warms only the runtime packaged with Toplantı. Model downloads remain an
+    /// explicit setup operation; summary creation never downloads a model.
+    private func ensureLocalSummaryRuntime() async throws -> OllamaSummaryStatus {
+        try Task.checkCancellation()
+        guard SummaryModelRuntime.isBundled else {
+            localSummaryServiceStatus = .updateRequired
+            localSummaryNeedsAppUpdate = true
+            localSummaryModelReady = false
+            localSummaryModelStatus = SummaryModelRuntimeError.missingRuntime.localizedDescription
+            throw SummaryModelRuntimeError.missingRuntime
+        }
+        let service = OllamaSummaryService()
+        var status = await service.status()
+        try Task.checkCancellation()
+        if status == .serviceUnavailable {
+            try localSummaryRuntime.startOwnedServer()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+            repeat {
+                try Task.checkCancellation()
+                status = await service.status()
+                if status != .serviceUnavailable { break }
+                guard localSummaryRuntime.isOwnedServerRunning else { throw SummaryModelRuntimeError.couldNotStart }
+                try await Task.sleep(for: .milliseconds(250))
+            } while ContinuousClock.now < deadline
+            guard status != .serviceUnavailable else { throw SummaryModelRuntimeError.couldNotStart }
+        }
+        applyLocalSummaryStatus(status)
+        guard status != .updateRequired else { throw SummaryModelRuntimeError.needsUpdate }
+        return status
+    }
+
+    func prepareLocalSummaryModel() {
+        guard !workInProgress, localSummaryBackend == .qwen else { return }
+        errorMessage = nil
+        let preparationID = UUID()
+        localSummaryPreparationID = preparationID
+        preparingLocalSummaryModel = true
+        localSummaryModelProgress = nil
+        localSummaryModelStatus = "Özet modeli hazırlanıyor…"
+        runProcessing(message: "Özet modeli hazırlanıyor. İlk indirme yaklaşık 6,6 GB olabilir…") { [weak self] in
+            guard let self else { return }
+            defer {
+                self.preparingLocalSummaryModel = false
+                self.localSummaryPreparationID = nil
+                self.localSummaryModelProgress = nil
+            }
+            do {
+                let service = OllamaSummaryService()
+                var status = try await self.ensureLocalSummaryRuntime()
+                if status != .ready {
+                    self.localSummaryModelStatus = "Özet modeli indiriliyor…"
+                    try await service.pullModel { [weak self] fraction, _ in
+                        Task { @MainActor [weak self] in
+                            guard let self, self.preparingLocalSummaryModel, self.localSummaryPreparationID == preparationID else { return }
+                            self.localSummaryModelProgress = fraction.flatMap { $0.isFinite ? min(1, max(0, $0)) : nil }
+                        }
+                    }
+                }
+                try Task.checkCancellation()
+                status = await service.status()
+                try Task.checkCancellation()
+                self.localSummaryServiceStatus = status
+                guard status != .updateRequired else { throw SummaryModelRuntimeError.needsUpdate }
+                guard status == .ready else { throw MeetingError.message("Özet modeli henüz hazır değil. Model hazırlamayı yeniden deneyebilirsin.") }
+                self.applyLocalSummaryStatus(status)
+                self.statusMessage = "Qwen özet modeli hazır. Toplantı notlarını bu Mac’te oluşturabilirsin."
+            } catch is CancellationError {
+                self.localSummaryModelStatus = "Model hazırlama iptal edildi. Daha sonra yeniden deneyebilirsin."
+                throw CancellationError()
+            } catch {
+                self.localSummaryModelReady = false
+                self.localSummaryNeedsAppUpdate = self.localSummaryServiceStatus == .updateRequired || !SummaryModelRuntime.isBundled
+                self.localSummaryModelStatus = error.localizedDescription
+                throw error
+            }
+        }
+    }
+
     func speechLanguage(for meeting: Meeting) -> String { meeting.speechLanguage ?? transcriptionLanguage }
     func setSpeechLanguage(_ language: String, for id: UUID) {
         update(id) { $0.speechLanguage = language }
@@ -141,6 +253,8 @@ final class AppStore: ObservableObject {
         systemServicesEnabled = initializeSystemServices && previewRoot == nil
         notion = notionConnection ?? NotionConnection(loadCredentials: systemServicesEnabled)
         library = MeetingLibrary(root: root ?? previewRoot)
+        localSummarySettingsDefaults = audioRetentionDefaults
+        localSummaryBackend = LocalSummaryBackend.selection(in: audioRetentionDefaults)
         speakerSettingsDefaults = audioRetentionDefaults
         speakerEngine = SpeakerDiarizationEngine(cacheRoot: library.root.appendingPathComponent(".speaker-models", isDirectory: true))
         voiceProfileStore = VoiceProfileStore(root: library.root.appendingPathComponent(".voice-profiles", isDirectory: true))
@@ -162,7 +276,8 @@ final class AppStore: ObservableObject {
         do { voiceProfiles = try voiceProfileStore.load() } catch { errorMessage = error.localizedDescription }
         if initializeSystemServices && previewRoot == nil { refreshKey(); refreshMicrophones() }
         Publishers.CombineLatest4(recorder.$isRecording, $isBusy, $showMicrophoneCheck, notion.$isExporting)
-            .map { recording, busy, checking, exporting in recording || busy || checking || exporting }
+            .combineLatest($preparingLocalSummaryModel)
+            .map { activity, preparing in activity.0 || activity.1 || activity.2 || activity.3 || preparing }
             .removeDuplicates()
             .sink { [weak self] busy in
                 guard let self else { return }
@@ -483,13 +598,27 @@ final class AppStore: ObservableObject {
             throw MeetingError.message("Özet için önce transkript oluştur.")
         }
         let notes: MeetingNotes
-        if mode == .local { notes = try await LocalSummaryService().summarize(meeting: meeting) }
-        else {
+        let backend = localSummaryBackend
+        if mode == .local {
+            switch backend {
+            case .qwen:
+                let status = try await ensureLocalSummaryRuntime()
+                guard status == .ready else {
+                    showSettings = true
+                    throw MeetingError.message("Özet modelini ilk kullanımda Toplantı’nın Ayarlar bölümünden indir. Mevcut transkript ve notlar korunuyor.")
+                }
+                notes = try await OllamaSummaryService().summarize(meeting: meeting)
+            case .apple: notes = try await LocalSummaryService().summarize(meeting: meeting)
+            }
+        } else {
             guard let service = selectedOpenAIService() else { throw MeetingError.message("OpenAI modu için API anahtarı gerekiyor.") }
             notes = try await service.summarize(meeting: meeting)
         }
         try Task.checkCancellation()
-        try commitGeneratedNotes(notes, sourceMeeting: meeting, engine: mode.rawValue)
+        guard mode != .local || localSummaryBackend == backend else {
+            throw MeetingError.message("Özet hazırlanırken model seçimi değişti. Önceki notlar korundu; yeniden oluşturabilirsin.")
+        }
+        try commitGeneratedNotes(notes, sourceMeeting: meeting, engine: mode == .local ? backend.notesEngine : mode.rawValue)
         statusMessage = "Toplantı notu hazır. Düzeltmeler ve tamamlanan görevler korundu; kaynakları kontrol edebilirsin."
     }
 
