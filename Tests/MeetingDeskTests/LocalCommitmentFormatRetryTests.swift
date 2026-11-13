@@ -29,12 +29,13 @@ final class LocalCommitmentFormatRetryTests: XCTestCase {
     func testMissingWrongAndExtraFieldsGetExactlyOneStrictFreshResponse() async throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("Requires macOS 26") }
         let invalid: [[String: Any]] = [
-            ["commitmentState": states[0]],
-            ["sourceObservation": "Kaynak bir iş bildiriyor."],
-            ["sourceObservation": true, "commitmentState": states[0]],
-            ["sourceObservation": "Kaynak bir iş bildiriyor.", "commitmentState": 1],
-            ["observation": "Kaynak bir iş bildiriyor.", "commitmentState": states[0]],
-            ["sourceObservation": "Kaynak bir iş bildiriyor.", "commitmentState": states[0], "owner": "Onur"]
+            [:],
+            ["sourceObservation": "A factual sentence without the required state."],
+            ["commitmentState": 1],
+            ["commitmentState": NSNull()],
+            ["sourceObservation": "No longer requested", "commitmentState": states[0]],
+            ["observation": "No longer requested", "commitmentState": states[0]],
+            ["commitmentState": states[0], "owner": "Onur"]
         ]
         let replacement = try generated(valid(states[0]))
         for wire in invalid {
@@ -81,35 +82,35 @@ final class LocalCommitmentFormatRetryTests: XCTestCase {
         let count = await calls.value(); XCTAssertEqual(count, 1)
     }
 
-    func testEveryValidStateAcceptsBlankObservationAfterExactlyOneInvalidStateRetry() async throws {
+    func testEveryValidStateOnlyReplacementIsAcceptedAfterExactlyOneMissingStateRetry() async throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("Requires macOS 26") }
-        let initial = try generated(valid("unknown"))
+        let initial = try generated(["sourceObservation": "A factual sentence without the required state."])
         for state in states {
-            for observation in ["", " \t\n"] {
-                let calls = CommitmentFormatRetryCounter()
-                let replacement = try generated(["sourceObservation": observation, "commitmentState": state])
-                let result = try await LocalSummaryService.commitmentAllowsActionWithFormatRetry(initial) {
-                    await calls.increment(); return replacement
-                }
-                XCTAssertEqual(result, state == "agreed_or_committed_future_task")
-                let count = await calls.value(); XCTAssertEqual(count, 1)
+            let calls = CommitmentFormatRetryCounter()
+            let replacement = try generated(valid(state))
+            let result = try await LocalSummaryService.commitmentAllowsActionWithFormatRetry(initial) {
+                await calls.increment(); return replacement
             }
+            XCTAssertEqual(result, state == "agreed_or_committed_future_task")
+            let count = await calls.value(); XCTAssertEqual(count, 1)
         }
     }
 
-    func testValidInitialBlankObservationPreservesEveryStateWithoutRetry() async throws {
+    func testRepeatedObservationOnlyResponseCannotBecomeFalseOrTriggerAThirdRequest() async throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("Requires macOS 26") }
-        for state in states {
-            for observation in ["", " \t\n"] {
-                let initial = try generated(["sourceObservation": observation, "commitmentState": state])
-                let calls = CommitmentFormatRetryCounter()
-                let result = try await LocalSummaryService.commitmentAllowsActionWithFormatRetry(initial) {
-                    await calls.increment(); throw CancellationError()
-                }
-                XCTAssertEqual(result, state == "agreed_or_committed_future_task")
-                let count = await calls.value(); XCTAssertEqual(count, 0)
+        let missing = try generated(["sourceObservation": "A complete factual sentence with no state."])
+        XCTAssertTrue(missing.isComplete)
+        let calls = CommitmentFormatRetryCounter()
+        do {
+            _ = try await LocalSummaryService.commitmentAllowsActionWithFormatRetry(missing) {
+                await calls.increment(); return missing
             }
+            XCTFail("Missing state must abort rather than produce an empty action list")
+        } catch {
+            XCTAssertTrue(error is MeetingError)
+            XCTAssertEqual(error.localizedDescription, LocalSummaryService.CommitmentResponseError.invalidFormat.localizedDescription)
         }
+        let count = await calls.value(); XCTAssertEqual(count, 1)
     }
 
     func testRetryClosureCancellationPropagatesUnchanged() async throws {
@@ -159,13 +160,14 @@ final class LocalCommitmentFormatRetryTests: XCTestCase {
             XCTAssertTrue(retry.hasPrefix(original))
             XCTAssertGreaterThan(retry.utf8.count, original.utf8.count)
             for state in states { XCTAssertTrue(retry.contains(state)) }
-            XCTAssertTrue(retry.contains("sourceObservation"))
+            XCTAssertFalse(retry.contains("sourceObservation"))
+            XCTAssertTrue(retry.contains("exactly one field: commitmentState"))
             XCTAssertTrue(retry.contains("commitmentState"))
         }
     }
 
     private func valid(_ state: String) -> [String: Any] {
-        ["sourceObservation": "Kaynak, bu işin bildirilen durumunu açıklıyor.", "commitmentState": state]
+        ["commitmentState": state]
     }
 
     @available(macOS 26.0, *)

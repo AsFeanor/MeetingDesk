@@ -1,6 +1,6 @@
-# Toplantı 0.6.3
+# Toplantı 0.6.4
 
-- Yerel modelin yanıt biçimi ile aksiyon doğrulaması arasındaki uyumsuzluk düzeltildi. Modelin yardımcı açıklamayı boş döndürmesi, geçerli bir aksiyon durumu veya kişi seçimi varken bütün özeti durdurmaz.
-- Yardımcı açıklama hâlâ metin türünde ve gerekli alandır. Aksiyonun kararlaştırılma durumu, kişi seçenekleri ve kaynak bağlantıları aynı kurallarla doğrulanır; bilinmeyen değerler kabul edilmez.
+- Yerel aksiyon değerlendirmesinde modelin yardımcı açıklamayı üretip asıl karar alanını atlaması nedeniyle özetin durması düzeltildi. Bu adım artık yalnız beş geçerli durumdan birini isteyen tek zorunlu karar alanı kullanır.
+- Aksiyonun kararlaştırılma, önerilme, iptal edilme veya tamamlanma anlamları ve kaynak kontrolleri korunur. Eksik veya geçersiz kararlar başarılı bir değerlendirme olarak kabul edilmez.
 
-Mevcut transkript yeniden kullanılabilir. Güncellemeden sonra **Özet oluştur** veya **Özeti yenile** kullanılabilir.
+Mevcut transkript kullanılabilir. Güncellemeden sonra **Özet oluştur** veya **Özeti yenile** seçilebilir.

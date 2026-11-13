@@ -227,17 +227,12 @@ final class LocalActionAssessmentTests: XCTestCase {
                             "Text from different aliases must never be concatenated to validate a quote")
     }
 
-    func testCommitmentSchemaRequiresFactualObservationFirstAndTheSameFiveClosedStatesInBothLanguages() throws {
+    func testCommitmentSchemaRequiresOnlyTheSameFiveClosedStatesInBothLanguages() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         for language in ["English", "Turkish"] {
             let schema = try commitmentSchema(language: language)
-            let fields = try objectFields(schema, required: ["sourceObservation", "commitmentState"])
-            XCTAssertEqual(schema["x-order"] as? [String], ["sourceObservation", "commitmentState"])
-            let observation = try resolve(try XCTUnwrap(fields["sourceObservation"] as? [String: Any]), in: schema)
-            XCTAssertEqual(observation["type"] as? String, "string")
-            let observationDescription = try XCTUnwrap(observation["description"] as? String)
-            XCTAssertTrue(observationDescription.contains(language == "English" ? "brief factual sentence" : "kısa olgusal cümle"))
-            XCTAssertTrue(observationDescription.contains(language == "English" ? "No new facts or step-by-step reasoning" : "Yeni bilgi veya adım adım akıl yürütme üretme"))
+            let fields = try objectFields(schema, required: ["commitmentState"])
+            XCTAssertEqual(schema["x-order"] as? [String], ["commitmentState"])
             let commitment = try resolve(try XCTUnwrap(fields["commitmentState"] as? [String: Any]), in: schema)
             XCTAssertEqual(try finiteStrings(commitment, in: schema), commitmentStates)
             let description = try XCTUnwrap(commitment["description"] as? String)
@@ -266,46 +261,26 @@ final class LocalActionAssessmentTests: XCTestCase {
         }
     }
 
-    func testCommitmentStringObservationMayBeEmptyWithoutChangingAnyClosedStateVerdict() throws {
+    func testStateOnlyCommitmentRejectsMissingStateAndAnyExplanationOrOtherExtraField() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        let observationOnly = try generated(["sourceObservation": "The source reports a factual sentence without a state."])
+        XCTAssertTrue(observationOnly.isComplete, "Complete generated content is not necessarily a valid state response")
+        XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(observationOnly))
+        XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated([:])))
         for state in commitmentStates {
-            for observation in ["", " \t\n"] {
-                let response = try generated(["sourceObservation": observation, "commitmentState": state])
-                XCTAssertEqual(try LocalSummaryService.commitmentAllowsAction(response), state == "agreed_or_committed_future_task")
+            for field in ["sourceObservation", "observation", "reason", "status"] {
+                var response = commitment(state)
+                response[field] = "Not part of the requested state-only contract"
+                XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(response)))
             }
         }
-        for invalid in ["unknown", true, NSNull()] as [Any] {
-            XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated([
-                "sourceObservation": "", "commitmentState": invalid
-            ])))
-        }
-        XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated([
-            "sourceObservation": "", "commitmentState": "agreed_or_committed_future_task", "unexpected": true
-        ])))
     }
 
-    func testLocalizedCommitmentObservationsUseTheSameClosedStateCodesWithoutLocaleFallback() throws {
+    func testCommitmentParserKeepsOriginalEnglishStateCodesWithoutTranslatedAliases() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
-        let observations = [
-            ("agreed_or_committed_future_task", "İş açıkça kararlaştırıldı; sorumlu veya tarih belirtilmedi.", "The work was explicitly agreed; no person or time was stated."),
-            ("only_proposed_or_unaccepted", "Yalnız öneri var; işi yapma kararı veya kabulü yok.", "Only a proposal is reported; no decision or acceptance to perform it exists."),
-            ("cancelled_or_rejected", "Bu işi yapma kararı iptal edildi; iş yapılmayacak.", "The work was cancelled and will not happen."),
-            ("already_completed", "Kaynak, işin zaten tamamlandığını bildiriyor.", "The source reports the work already completed."),
-            ("not_a_future_execution_task", "Yalnız durum veya tercih üzerinde anlaşma var; somut uygulama işi bildirilmedi.", "Only a state or preference agreement is reported; no concrete execution work is stated.")
-        ]
-        for (state, turkish, english) in observations {
-            for observation in [turkish, english] {
-                let result = try LocalSummaryService.commitmentAllowsAction(try generated([
-                    "sourceObservation": observation, "commitmentState": state
-                ]))
-                XCTAssertEqual(result, state == "agreed_or_committed_future_task",
-                               "Instruction/observation language must not change the only positive wire state")
-            }
-        }
         for localizedAlias in ["kararlaştırıldı", "üstlenildi", "öneri", "iptal_edildi", "tamamlandı", "durum_kararı"] {
-            XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated([
-                "sourceObservation": "Türkçe bir olgusal gözlem.", "commitmentState": localizedAlias
-            ])), "Localized instructions never permit translated enum aliases or a default false result")
+            XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(commitment(localizedAlias))),
+                "Localized instructions never permit translated enum aliases or a default false result")
         }
     }
 
@@ -316,17 +291,9 @@ final class LocalActionAssessmentTests: XCTestCase {
             value["commitmentState"] = invalid
             XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(value)))
         }
-        for state in commitmentStates {
-            for invalid in [nil, NSNull(), true, 1, [] as [String], ["text": "observation"]] as [Any?] {
-                var value = commitment(state)
-                value["sourceObservation"] = invalid
-                XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(value)),
-                                    "Every state still requires a String observation field; malformed responses never become false")
-            }
-        }
-        XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(["commitmentState": "agreed_or_committed_future_task"])),
-                            "The old one-field response is no longer valid production wire")
-        for name in ["id", "candidate", "text", "evidence", "owner", "due", "responsiblePerson", "deadline", "status", "unexpected"] {
+        XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated([:])),
+                            "The state is required; absence never becomes false")
+        for name in ["sourceObservation", "id", "candidate", "text", "evidence", "owner", "due", "responsiblePerson", "deadline", "status", "unexpected"] {
             var value = commitment()
             if name == "responsiblePerson" || name == "deadline" {
                 value[name] = absent()
@@ -946,7 +913,7 @@ final class LocalActionAssessmentTests: XCTestCase {
 
     private func absent() -> [String: Any] { ["type": "notStated"] }
     private func commitment(_ state: String = "agreed_or_committed_future_task") -> [String: Any] {
-        ["sourceObservation": "The source reports the task and its latest agreement state.", "commitmentState": state]
+        ["commitmentState": state]
     }
     private func observedChoice(_ id: String) -> [String: Any] {
         ["sourceObservation": "The cited source identifies the responsible person or records no named assignment.", "personChoice": id]
