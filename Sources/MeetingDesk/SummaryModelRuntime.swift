@@ -54,6 +54,9 @@ final class SummaryModelRuntime: @unchecked Sendable {
         var environment = ProcessInfo.processInfo.environment
         environment["OLLAMA_HOST"] = "127.0.0.1:11471"
         environment["OLLAMA_NO_CLOUD"] = "1"
+        environment["OLLAMA_DEBUG_LOG_REQUESTS"] = "0"
+        environment["OLLAMA_DEBUG"] = "0"
+        environment["OLLAMA_NOHISTORY"] = "1"
         environment["OLLAMA_NUM_PARALLEL"] = "1"
         environment["OLLAMA_MAX_LOADED_MODELS"] = "1"
         environment["OLLAMA_MODELS"] = FileManager.default.homeDirectoryForCurrentUser
