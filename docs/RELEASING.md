@@ -54,7 +54,7 @@ Ortam değişkenleri `UPDATE_REPOSITORY`, `SU_FEED_URL`, `SU_PUBLIC_ED_KEY`, `PR
 
 ## İlk güncellenebilir sürüm
 
-`Packaging/Info.plist` içindeki `CFBundleShortVersionString` kullanıcıya görünen sürüm, `CFBundleVersion` artan tam sayı yapı numarasıdır. İlk güncellenebilir sürüm `0.3.1` / yapı `6` idi. Bu sürüm `0.6.4` / yapı `18` olarak hazırlanır. Kaynak kod etiketi ve indirilebilir paket aynı sürüme karşılık gelir.
+`Packaging/Info.plist` içindeki `CFBundleShortVersionString` kullanıcıya görünen sürüm, `CFBundleVersion` artan tam sayı yapı numarasıdır. İlk güncellenebilir sürüm `0.3.1` / yapı `6` idi. Bu sürüm `0.7.0` / yapı `19` olarak hazırlanır. Kaynak kod etiketi ve indirilebilir paket aynı sürüme karşılık gelir.
 
 `0.5.5` ile eski imzalama anahtarına erişilemediği için yeni yerel anahtara geçilmiştir. Yeni kamuya açık anahtar `Packaging/release-config.json` içinde tutulur; gizli anahtar Anahtar Zinciri'nde kalır. `0.5.3` ve önceki sürümler yeni imzayı doğrulayamaz: kullanıcılar `0.5.5` paketini bir kez elle kurmalıdır. Sonraki sürümler yeni anahtarla imzalanarak uygulama içinden güncellenebilir. Yayında `--bootstrap` kullanılmaz; mevcut beslemenin yapı numarası kontrolü devam eder.
 
@@ -76,9 +76,9 @@ En güncel kararlı sürümü GitHub Releases sayfasından indirip **bir kez** k
 5. Sürümün hazır olduğu doğrulandıktan sonra yayınlayın.
 
 ```sh
-zsh Packaging/build.sh dist/v0.6.4
-python3 Packaging/release.py publish --app dist/v0.6.4/Toplanti.app --prepare-only
-python3 Packaging/release.py publish --app dist/v0.6.4/Toplanti.app --notes-file docs/release-notes.md
+zsh Packaging/build.sh dist/v0.7.0
+python3 Packaging/release.py publish --app dist/v0.7.0/Toplanti.app --prepare-only
+python3 Packaging/release.py publish --app dist/v0.7.0/Toplanti.app --notes-file docs/release-notes.md
 ```
 
 `--prepare-only` GitHub'dan salt okunur depo/besleme bilgisi alır ve yerel ZIP'i imzalar; release oluşturmaz ve beslemeyi değiştirmez. Kamuya açık anahtar ile ZIP imzası ayrıca CryptoKit kullanılarak doğrulanır.
@@ -114,9 +114,9 @@ Otomatik yayın için kaynak deponun Actions secrets alanında:
 Tag'i göndermeden önce sürüm/yapı değerleri ve kamuya açık güncelleme yapılandırması commit edilmiş olmalıdır:
 
 ```sh
-git tag v0.6.4
+git tag v0.7.0
 git push origin main
-git push origin v0.6.4
+git push origin v0.7.0
 ```
 
 İlk Actions yayını için workflow'u elle çalıştırıp `bootstrap: true` seçin. Yerelde ilk release zaten yayımlandıysa bu seçenek kullanılmaz.
@@ -128,3 +128,9 @@ Mevcut paketleme `codesign -` ile ad hoc imzalar. Sparkle'ın ZIP ve besleme Ed2
 Build script framework yardımcılarını, frameworkü ve uygulamayı içten dışa imzalar; Downloader XPC entitlements korunur. `--deep` imzalama için kullanılmaz, yalnız doğrulamada kullanılır. Developer ID kullanıldığında Hardened Runtime ve güvenilir zaman damgası eklenir. Notarizasyon, `notarytool` ve stapling ayrıca yapılandırılmalıdır; bu depo mevcut durumda bunları otomatik tamamlandığını iddia etmez.
 
 Referanslar: [Sparkle kurulum](https://sparkle-project.org/documentation/), [paket ve besleme yayınlama](https://sparkle-project.org/documentation/publishing/), [yardımcıların kod imzası](https://sparkle-project.org/documentation/sandboxing/#code-signing), [GitHub release asset API](https://docs.github.com/en/rest/releases/assets), [GitHub Contents API](https://docs.github.com/en/rest/repos/contents).
+
+## Paket içi özet motoru
+
+`Packaging/local_runtime.py`, sabitlenmiş Ollama 0.40.11 arşivini SHA-256 ile doğrular ve yalnız ARM64 komut satırı motoru, model çalıştırıcısı ve lisansları seçer. Ayrı GUI uygulaması ve model ağırlıkları pakete alınmaz. İki yardımcı içten dışa imzalanır, son dosya imzaları çalışma zamanı manifestine yazılır, ardından dış uygulama imzalanır. Güncelleme imza anahtarı değişmez.
+
+İlk derlemede yaklaşık 181 MB kaynak arşivi `.build/vendor` önbelleğine indirilir. Sonraki derlemelerde doğrulanmış arşiv yeniden kullanılır. Model dosyaları son kullanıcı tarafından uygulama içinden ayrıca hazırlanır ve release ZIP'ine eklenmez.

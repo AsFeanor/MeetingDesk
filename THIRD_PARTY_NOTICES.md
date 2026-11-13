@@ -1,5 +1,18 @@
 # Third-party notices
 
+MeetingDesk / Toplantı bundles the ARM64 command-line runtime and model runner
+from Ollama 0.40.11. It does not include or require the separate Ollama GUI app.
+Upstream: https://github.com/ollama/ollama/tree/v0.40.11
+The pinned source archive, SHA-256, selected members and runtime manifest are
+defined in Packaging/local-runtime.json. Full upstream notices are included in
+Contents/Resources/LocalSummaryRuntime and its Notices directory, including the Ollama MIT license,
+llama.cpp, Go, xgrammar and their bundled component notices.
+
+Qwen3.5 9B Q4_K_M model weights are an optional, separate first-use download and
+are not included in this application or its update archive. The model is
+distributed under Apache 2.0 by its publisher:
+https://ollama.com/library/qwen3.5:9b-q4_K_M
+
 MeetingDesk / Toplantı includes Sparkle 2.10.0 for application updates.
 Upstream: https://github.com/sparkle-project/Sparkle/tree/2.10.0
 The following copyright and license notices are reproduced from the pinned

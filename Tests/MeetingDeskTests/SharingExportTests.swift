@@ -3,6 +3,18 @@ import PDFKit
 @testable import MeetingDesk
 
 final class SharingExportTests: XCTestCase {
+    func testLocalSummaryExportsDescribeTheActualBackend() {
+        var meeting = fixture()
+        meeting.notesEngine = "local-qwen3.5:9b"
+        let qwen = MeetingExport.document(meeting, options: MeetingShareOptions(scope: .summary))
+        XCTAssertTrue(qwen.plainText.contains("bu Mac’te Qwen3.5"))
+        XCTAssertFalse(qwen.plainText.contains("Apple’ın yerel modeli"))
+        meeting.notesEngine = ProcessingMode.local.rawValue
+        let apple = MeetingExport.document(meeting, options: MeetingShareOptions(scope: .summary))
+        XCTAssertTrue(apple.plainText.contains("Apple’ın yerel modeli"))
+        XCTAssertFalse(apple.plainText.contains("Qwen3.5"))
+    }
+
     func testPersonalNotesAreExcludedFromEveryScopeUnlessExplicitlyIncluded() {
         let meeting = fixture()
         XCTAssertFalse(MeetingExport.markdown(meeting).contains(meeting.personalNotes))

@@ -20,6 +20,23 @@ struct RootView: View {
         store.meetings.filter { MeetingArchiveSearch.matches($0, query: query) }
     }
 
+    private var needsLocalSummarySetup: Bool {
+        store.processingMode == .local && store.localSummaryBackend == .qwen &&
+            (store.localSummaryServiceStatus == .modelMissing || store.localSummaryServiceStatus == .updateRequired || store.localSummaryNeedsAppUpdate)
+    }
+
+    private func summaryActionTitle(for meeting: Meeting) -> String {
+        if needsLocalSummarySetup {
+            return store.localSummaryNeedsAppUpdate || store.localSummaryServiceStatus == .updateRequired ? "Toplantı’yı güncelle" : "Özet modelini hazırla"
+        }
+        return meeting.notes == nil ? "Özet oluştur" : "Özeti yenile"
+    }
+
+    private func createSummary() {
+        if needsLocalSummarySetup { store.showSettings = true }
+        else { store.summarize(); tab = .overview }
+    }
+
     var body: some View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 16) {
@@ -111,6 +128,9 @@ struct RootView: View {
             Button("Tamam") { store.errorMessage = nil }
         } message: { Text(store.errorMessage ?? "") }
         .onChange(of: store.selectedID) { _, _ in store.stopPlayback(); store.playbackSource = .mixed; focusID = nil; editSegment = nil; reviewingSpeaker = nil }
+        .task(id: "\(store.processingMode.rawValue):\(store.localSummaryBackend.rawValue)") {
+            if store.processingMode == .local { await store.refreshLocalSummaryModelStatus() }
+        }
     }
 
     private var welcome: some View {
@@ -127,7 +147,7 @@ struct RootView: View {
             Divider()
             Label("Ses kayıtları ve toplantı arşivi Mac’te saklanır.", systemImage: "internaldrive").font(.caption).foregroundStyle(.secondary)
             Label("Mac’te ücretsiz transkript ve özet · API anahtarı gerekmez", systemImage: "sparkles").font(.caption).foregroundStyle(.secondary)
-            Text("Yerel mod için macOS 26+ gerekir. Özet, Apple Intelligence açıkken çalışır.").font(.caption).foregroundStyle(.secondary)
+            Text(store.localSummaryBackend == .qwen ? "Ücretsiz yerel transkript için macOS 26+ gerekir. Qwen özet modeli ilk kullanımda bir kez hazırlanır." : "Ücretsiz yerel transkript için macOS 26+ gerekir. Temel özet, Apple Intelligence açıkken çalışır.").font(.caption).foregroundStyle(.secondary)
         }.padding(55).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
@@ -243,12 +263,12 @@ struct RootView: View {
                         .pickerStyle(.segmented).frame(maxWidth: 480)
                     Spacer()
                     if !meeting.segments.isEmpty && !recorder.isRecording {
-                        Button(meeting.notes == nil ? "Özet oluştur" : "Özeti yenile") { store.summarize(); tab = .overview }
+                        Button(summaryActionTitle(for: meeting)) { createSummary() }
                             .disabled(store.isBusy)
                     }
                 }
                 if !meeting.segments.isEmpty && meeting.notes == nil && !recorder.isRecording {
-                    Text(store.processingMode == .local ? "Ücretsiz yerel özet · Apple Intelligence kullanır; transkript Mac’te işlenir." : "Özet oluştururken transkript OpenAI’a gönderilir. Kaynak metin korunur.").font(.caption2).foregroundStyle(.secondary)
+                    Text(store.processingMode == .local ? store.localSummaryBackend.meetingDescription : "Özet oluştururken transkript OpenAI’a gönderilir. Kaynak metin korunur.").font(.caption2).foregroundStyle(.secondary)
                 }
             }.padding(24)
             Divider()
@@ -336,7 +356,7 @@ struct RootView: View {
                         Text(recorder.isRecording ? "Kayıt sürerken ‘Kendi notlarım’ alanına istediğin noktaları ekleyebilirsin." : meeting.segments.isEmpty ? "Önce kaydı bitirip transkripti oluştur. Ardından kararları ve sonraki adımları çıkaralım." : "Özeti oluşturmadan önce konuşmacı adlarını düzeltebilirsin. Söylenmeyen sorumlu ve tarih alanları boş bırakılır.")
                             .foregroundStyle(.secondary).lineSpacing(4)
                         if !meeting.segments.isEmpty {
-                            Button("Özet oluştur") { store.summarize() }.buttonStyle(.borderedProminent).disabled(store.isBusy)
+                            Button(summaryActionTitle(for: meeting)) { createSummary() }.buttonStyle(.borderedProminent).disabled(store.isBusy)
                         }
                     }.padding(.vertical, 40)
                 }
@@ -493,7 +513,6 @@ private struct SettingsView: View {
     @State private var key = ""
     @State private var error: String?
     @State private var transcriptionStatus = "Dil desteği kontrol ediliyor…"
-    @State private var summaryStatus = ""
     var body: some View {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
@@ -522,9 +541,10 @@ private struct SettingsView: View {
                 Text("Ses ve transkript Mac’te işlenir. İlk kullanımda Apple’ın ücretsiz dil modeli indirilebilir; sonraki kullanımlarda aynı model kullanılır.").font(.callout).foregroundStyle(.secondary).lineSpacing(4)
                 VStack(alignment: .leading, spacing: 8) {
                     Text(transcriptionStatus)
-                    Text(summaryStatus)
                 }.font(.caption).foregroundStyle(.secondary)
-                Text("Konuşmacı tanımayı aşağıdaki bölümden açabilirsin. Uzun toplantıların özeti bölümler halinde hazırlanır; sonraki bölümde değişen kararları kaynak metinden kontrol et.").font(.caption).foregroundStyle(.secondary)
+                Text("Konuşmacı tanımayı aşağıdaki bölümden açabilirsin.").font(.caption).foregroundStyle(.secondary)
+                Divider()
+                LocalSummaryBackendSettingsView(store: store)
             } else {
                 Text("OpenAI API anahtarı").font(.headline)
                 SecureField(store.hasKey ? "Yeni anahtar girerek değiştirebilirsin" : "API anahtarını gir", text: $key).textFieldStyle(.roundedBorder)
@@ -570,7 +590,6 @@ private struct SettingsView: View {
         }.padding(30)
       }.frame(width: 600).frame(maxHeight: 720)
         .task(id: store.transcriptionLanguage) {
-            summaryStatus = LocalSummaryService.availabilityDescription()
             transcriptionStatus = await LocalTranscriptionService.availabilityDescription(language: store.transcriptionLanguage)
         }
     }

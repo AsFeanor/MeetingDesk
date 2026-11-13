@@ -4,7 +4,15 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-**0.6.4 / yapı 18** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+**0.7.0 / yapı 19** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+
+## Kısa toplantı notları
+
+**Ayarlar → Özet modeli** bölümünde önerilen Qwen3.5 9B seçeneğini kullanın. İlk kullanımda **Modeli hazırla / Modeli indir** ile yaklaşık 6,6 GB model bir kez indirilir. Özet motoru uygulama paketinin içindedir ve gerektiğinde arka planda kendiliğinden başlar; başka uygulama kurmak veya açmak, API anahtarı almak gerekmez.
+
+Notlar kısa bir genel özet, konuya göre derlenmiş açıklamalar, son durumda geçerli kararlar ve yapılacaklardan oluşur. Tekrarlanan görevler birleştirilir; sorumlu ve tarih yalnız konuşmada açıkça bulunuyorsa yazılır. Şablon ve özet dili korunur. Modelin tam bağlamına sığmayan içerik sessizce kesilmez; işlem açıklayıcı bir hatayla durur ve önceki notlar korunur.
+
+Model indirmesinden sonra özetleme bu Mac’te çevrimdışı çalışır. Apple Intelligence seçeneği eski, bölümler halinde çalışan temel özetleyicidir. Qwen için Apple Silicon ve en az 16 GB bellek önerilir. Model dosyaları mevcut `~/.ollama/models` önbelleğinde saklanır; bu konum başka uygulama kullanıldığı anlamına gelmez.
 
 ## Sesinden kişi tanıma
 
@@ -16,7 +24,7 @@ Kenar çubuğundaki **Kişiler** ekranında eklediğiniz kişileri arayabilir, i
 
 - Seçilen mikrofon ve Mac'te çalan sistem sesi birlikte kaydedilir. Mikrofon güçlendirmesi seçilebilir; birleşik, yalnız mikrofon ve yalnız sistem kayıtları saklanır.
 - Türkçe veya İngilizce konuşma seçilen dilde Apple'ın yerel konuşma/dikte modeliyle yazıya çevrilir. Yerel döküm zaman damgalıdır; ayrı ses kaynaklarını etiketler, kişi kimliğini otomatik tanımaz.
-- Apple Intelligence dökümden özet, karar, aksiyon ve açık sorular çıkarır. Kaynak bağlantıları konuşmanın ilgili bölümüne götürür.
+- Qwen3.5 dökümü bütün olarak değerlendirip kısa genel özet, konu başlıkları, kararlar ve tekrarsız yapılacaklar oluşturur. İptal edilmiş veya tamamlanmış işler bekleyen aksiyon olarak sunulmaz. Kaynak bağlantıları ilgili konuşmaya götürür. Apple Intelligence ayrıca temel seçenek olarak seçilebilir.
 - Kayıttan önce 10 saniyelik ses denemesi yapılabilir; deneme yalnız mikrofonu dinletir ve kapatıldığında geçici sesler silinir.
 - Ayrı mikrofon ve sistem kayıtları ayrı çözülüp zaman sırasına birleştirilir. Kaynak etiketleri “Mikrofon” ve “Toplantı sesi”dir; karşı taraftaki kişileri tek tek tanımaz. Eski veya içe aktarılan birleşik kayıtlar açık bir bilgiyle birleşik olarak çözülür.
 - Özet, kararlar, aksiyonlar, sorumlu/tarih, sorular, fikirler ve konular düzenlenebilir. Manuel düzeltmeler ve tamamlanan görevler yenilemede korunur; önceki not sürümüne dönülebilir. Kontrol edilen notlar işaretlenebilir.
@@ -53,7 +61,7 @@ Toplantı hatırlatıcısı desteklenen uygulamanın mikrofon sinyaline bakar, k
 
 ## Gereksinimler
 
-Kayıt arayüzü macOS 15 ve üzerini hedefler. Ücretsiz yerel transkript için macOS 26+, yerel özet için desteklenen Mac'te hazır Apple Intelligence gerekir. İlk kullanımda konuşma modeli indirilebilir. Yerel özelliklerin kullanılabilirliği uygulamada gösterilir.
+Kayıt arayüzü macOS 15 ve üzerini hedefler. Ücretsiz yerel transkript için macOS 26+ gerekir. Önerilen yerel Qwen özeti, uygulamayla gelen motor ve bir defalık model indirmesini kullanır. Temel Apple özeti için hazır Apple Intelligence gerekir. Yerel özelliklerin kullanılabilirliği uygulamada gösterilir.
 
 Kaynak kodu derlemek için **Xcode 26.4+** ve macOS 26.4+ SDK gerekir. İlk derlemede SwiftPM sabitlenmiş Sparkle 2.10.0 paketini indirir. Paketlenen uygulama derlendiği Mac'in mimarisindedir; mevcut Apple Silicon dağıtımı Intel üzerinde çalışmaz.
 

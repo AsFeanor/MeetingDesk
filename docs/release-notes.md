@@ -1,6 +1,7 @@
-# Toplantı 0.6.4
+# Toplantı 0.7.0
 
-- Yerel aksiyon değerlendirmesinde modelin yardımcı açıklamayı üretip asıl karar alanını atlaması nedeniyle özetin durması düzeltildi. Bu adım artık yalnız beş geçerli durumdan birini isteyen tek zorunlu karar alanı kullanır.
-- Aksiyonun kararlaştırılma, önerilme, iptal edilme veya tamamlanma anlamları ve kaynak kontrolleri korunur. Eksik veya geçersiz kararlar başarılı bir değerlendirme olarak kabul edilmez.
+- Önerilen yerel özetleyici Qwen3.5 9B oldu. Toplantı bütün olarak değerlendirilir; bölüm notlarının arka arkaya eklendiği uzun döküm yerine kısa genel özet, konu başlıkları, kararlar ve tekrarsız yapılacaklar hazırlanır.
+- Model motoru Toplantı'nın içindedir ve arka planda kendiliğinden başlar. Ayrı bir uygulama kurmak veya açmak gerekmez. İlk kullanımda Ayarlar’dan yaklaşık 6,6 GB model bir kez hazırlanır; sonrasında özet Mac’te çevrimdışı çalışır.
+- Kaynak bağlantıları, şablon ve dil seçimi, kullanıcı düzeltmeleri ve tamamlanmış görevler korunur. Apple Intelligence temel seçenek olarak ayrıca seçilebilir.
 
-Mevcut transkript kullanılabilir. Güncellemeden sonra **Özet oluştur** veya **Özeti yenile** seçilebilir.
+Mevcut transkript kullanılabilir; yeniden ses çözümlemesi gerekmez. Güncellemeden sonra **Özeti yenile** kullanılabilir.
