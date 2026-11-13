@@ -266,6 +266,24 @@ final class LocalActionAssessmentTests: XCTestCase {
         }
     }
 
+    func testCommitmentStringObservationMayBeEmptyWithoutChangingAnyClosedStateVerdict() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        for state in commitmentStates {
+            for observation in ["", " \t\n"] {
+                let response = try generated(["sourceObservation": observation, "commitmentState": state])
+                XCTAssertEqual(try LocalSummaryService.commitmentAllowsAction(response), state == "agreed_or_committed_future_task")
+            }
+        }
+        for invalid in ["unknown", true, NSNull()] as [Any] {
+            XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated([
+                "sourceObservation": "", "commitmentState": invalid
+            ])))
+        }
+        XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated([
+            "sourceObservation": "", "commitmentState": "agreed_or_committed_future_task", "unexpected": true
+        ])))
+    }
+
     func testLocalizedCommitmentObservationsUseTheSameClosedStateCodesWithoutLocaleFallback() throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
         let observations = [
@@ -299,11 +317,11 @@ final class LocalActionAssessmentTests: XCTestCase {
             XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(value)))
         }
         for state in commitmentStates {
-            for invalid in [nil, NSNull(), true, 1, [] as [String], ["text": "observation"], "", " \t\n"] as [Any?] {
+            for invalid in [nil, NSNull(), true, 1, [] as [String], ["text": "observation"]] as [Any?] {
                 var value = commitment(state)
                 value["sourceObservation"] = invalid
                 XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(value)),
-                                    "Every state requires a valid factual observation; malformed responses never become false")
+                                    "Every state still requires a String observation field; malformed responses never become false")
             }
         }
         XCTAssertThrowsError(try LocalSummaryService.commitmentAllowsAction(try generated(["commitmentState": "agreed_or_committed_future_task"])),
@@ -563,13 +581,41 @@ final class LocalActionAssessmentTests: XCTestCase {
             var wire = observedChoice("none"); wire["personChoice"] = invalid
             XCTAssertThrowsError(try LocalSummaryService.resolveOwnerChoice(try generated(wire), domain: domain))
         }
-        for invalid in [nil, NSNull(), true, 1, [], [:], "", " \t\n"] as [Any?] {
+        for invalid in [nil, NSNull(), true, 1, [], [:]] as [Any?] {
             var wire = observedChoice(person.id); wire["sourceObservation"] = invalid
             XCTAssertThrowsError(try LocalSummaryService.resolveOwnerChoice(try generated(wire), domain: domain))
         }
         for field in ["owner", "responsiblePersonName", "responsibleIdentityKind", "hasExplicitTaskTime", "taskTimePhrase", "commitmentState", "unexpected"] {
             var wire = observedChoice(person.id); wire[field] = "not permitted"
             XCTAssertThrowsError(try LocalSummaryService.resolveOwnerChoice(try generated(wire), domain: domain))
+        }
+    }
+
+    func testBlankOwnerObservationKeepsValidatedChoicesAndCandidateBindingsStrict() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("FoundationModels requires macOS 26") }
+        let scope = try sourceScope()
+        let candidate = LocalSummaryService.ActionCandidate(id: "named", text: "Revise the design.", evidence: ["original-b"])
+        let catalog = try LocalSummaryService.parsePersonalNameCatalog(try generated(["s1": [], "s2": ["Ali"]]), evidenceScope: scope)
+        let domain = try LocalSummaryService.personChoiceDomain(candidate: candidate, evidenceScope: scope, catalog: catalog)
+        let person = try XCTUnwrap(domain.choices.first)
+        let foreignCandidate = LocalSummaryService.ActionCandidate(id: "different-task", text: candidate.text, evidence: candidate.evidence)
+        let foreignDomain = try LocalSummaryService.personChoiceDomain(candidate: foreignCandidate, evidenceScope: scope, catalog: catalog)
+        let foreignID = try XCTUnwrap(foreignDomain.choices.first).id
+        for observation in ["", " \t\n"] {
+            let response = try generated(["sourceObservation": observation, "personChoice": person.id])
+            let owner = try LocalSummaryService.resolveOwnerChoice(response, domain: domain)
+            XCTAssertEqual(owner.name, "Ali")
+            let none = try LocalSummaryService.resolveOwnerChoice(try generated(["sourceObservation": observation, "personChoice": "none"]), domain: domain)
+            XCTAssertNil(none.name)
+            for invalidChoice in [foreignID, "Ali", "foreign-person"] {
+                XCTAssertThrowsError(try LocalSummaryService.resolveOwnerChoice(try generated([
+                    "sourceObservation": observation, "personChoice": invalidChoice
+                ]), domain: domain))
+            }
+            XCTAssertThrowsError(try LocalSummaryService.actionFromSelections(candidate: foreignCandidate, owner: owner, deadline: nil))
+            XCTAssertThrowsError(try LocalSummaryService.resolveOwnerChoice(try generated([
+                "sourceObservation": observation, "personChoice": person.id, "unexpected": true
+            ]), domain: domain))
         }
     }
 

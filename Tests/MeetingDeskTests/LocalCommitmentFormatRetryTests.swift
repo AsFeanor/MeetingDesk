@@ -26,10 +26,9 @@ final class LocalCommitmentFormatRetryTests: XCTestCase {
         }
     }
 
-    func testBlankMissingWrongAndExtraFieldsGetExactlyOneStrictFreshResponse() async throws {
+    func testMissingWrongAndExtraFieldsGetExactlyOneStrictFreshResponse() async throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("Requires macOS 26") }
         let invalid: [[String: Any]] = [
-            ["sourceObservation": " \t\n", "commitmentState": states[0]],
             ["commitmentState": states[0]],
             ["sourceObservation": "Kaynak bir iş bildiriyor."],
             ["sourceObservation": true, "commitmentState": states[0]],
@@ -67,7 +66,7 @@ final class LocalCommitmentFormatRetryTests: XCTestCase {
 
     func testSecondInvalidResponseThrowsOldLocalizedMessageWithoutThirdAttemptOrFalseFallback() async throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("Requires macOS 26") }
-        let initial = try generated(["sourceObservation": "", "commitmentState": states[0]])
+        let initial = try generated(valid("unknown"))
         let replacement = try generated(valid("unknown"))
         let calls = CommitmentFormatRetryCounter()
         do {
@@ -82,19 +81,34 @@ final class LocalCommitmentFormatRetryTests: XCTestCase {
         let count = await calls.value(); XCTAssertEqual(count, 1)
     }
 
-    func testEveryStateStillRequiresNonblankObservationDuringRetry() async throws {
+    func testEveryValidStateAcceptsBlankObservationAfterExactlyOneInvalidStateRetry() async throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("Requires macOS 26") }
-        let initial = try generated(["commitmentState": states[0]])
+        let initial = try generated(valid("unknown"))
         for state in states {
-            let calls = CommitmentFormatRetryCounter()
-            let replacement = try generated(["sourceObservation": " \n", "commitmentState": state])
-            do {
-                _ = try await LocalSummaryService.commitmentAllowsActionWithFormatRetry(initial) {
+            for observation in ["", " \t\n"] {
+                let calls = CommitmentFormatRetryCounter()
+                let replacement = try generated(["sourceObservation": observation, "commitmentState": state])
+                let result = try await LocalSummaryService.commitmentAllowsActionWithFormatRetry(initial) {
                     await calls.increment(); return replacement
                 }
-                XCTFail("Even non-action states cannot bypass strict observation validation")
-            } catch { XCTAssertTrue(error is MeetingError) }
-            let count = await calls.value(); XCTAssertEqual(count, 1)
+                XCTAssertEqual(result, state == "agreed_or_committed_future_task")
+                let count = await calls.value(); XCTAssertEqual(count, 1)
+            }
+        }
+    }
+
+    func testValidInitialBlankObservationPreservesEveryStateWithoutRetry() async throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("Requires macOS 26") }
+        for state in states {
+            for observation in ["", " \t\n"] {
+                let initial = try generated(["sourceObservation": observation, "commitmentState": state])
+                let calls = CommitmentFormatRetryCounter()
+                let result = try await LocalSummaryService.commitmentAllowsActionWithFormatRetry(initial) {
+                    await calls.increment(); throw CancellationError()
+                }
+                XCTAssertEqual(result, state == "agreed_or_committed_future_task")
+                let count = await calls.value(); XCTAssertEqual(count, 0)
+            }
         }
     }
 
