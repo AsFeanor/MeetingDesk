@@ -1,7 +1,9 @@
-# Toplantı 0.7.0
+# Toplantı 0.8.0
 
-- Önerilen yerel özetleyici Qwen3.5 9B oldu. Toplantı bütün olarak değerlendirilir; bölüm notlarının arka arkaya eklendiği uzun döküm yerine kısa genel özet, konu başlıkları, kararlar ve tekrarsız yapılacaklar hazırlanır.
-- Model motoru Toplantı'nın içindedir ve arka planda kendiliğinden başlar. Ayrı bir uygulama kurmak veya açmak gerekmez. İlk kullanımda Ayarlar’dan yaklaşık 6,6 GB model bir kez hazırlanır; sonrasında özet Mac’te çevrimdışı çalışır.
-- Kaynak bağlantıları, şablon ve dil seçimi, kullanıcı düzeltmeleri ve tamamlanmış görevler korunur. Apple Intelligence temel seçenek olarak ayrıca seçilebilir.
+- Arayüz yenilendi: aranabilir arşiv, ferah toplantı notları, gerektiğinde açılan ayrıntılar ve içerik haritası.
+- Açık, koyu ve sistem teması; tercih uygulamada ve küçük kayıt kartında korunur.
+- ⌘K ile toplantı bulma, ⌘1/2/3 ile sekmeler, transkript içinde arama ve yalnız açık görevleri gösterme filtresi.
+- Kayıt kontrolleri sadeleştirildi. Gerçek mikrofon ve toplantı sesi göstergeleri, yumuşak sekme geçişleri ve süre animasyonu eklendi; Hareketi Azalt ayarı gözetilir.
+- Ayarlar bölümlere ayrıldı. Bir kişiye eşleştirilmiş birden fazla ses grubu ayrıntı panelinde tek kişi olarak gösterilir.
 
-Mevcut transkript kullanılabilir; yeniden ses çözümlemesi gerekmez. Güncellemeden sonra **Özeti yenile** kullanılabilir.
+Mevcut kayıtlar, transkriptler, notlar ve ses profilleri kullanılmaya devam eder. Yeniden transkript veya özet oluşturmak gerekmez.

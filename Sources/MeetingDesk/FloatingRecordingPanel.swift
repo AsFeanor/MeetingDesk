@@ -229,7 +229,9 @@ private final class FloatingRecordingPanelModel: ObservableObject {
 private struct FloatingRecordingPanelView: View {
     @ObservedObject var model: FloatingRecordingPanelModel
     private var state: FloatingRecordingPanelSnapshot { model.snapshot }
-    private let accent = Color(red: 0.05, green: 0.42, blue: 0.36)
+    private let accent = WorkspaceStyle.accent
+    @AppStorage(WorkspaceAppearance.defaultsKey) private var appearanceRaw = WorkspaceAppearance.system.rawValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -260,6 +262,7 @@ private struct FloatingRecordingPanelView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(.primary.opacity(0.1), lineWidth: 1))
         .tint(accent)
+        .preferredColorScheme((WorkspaceAppearance(rawValue: appearanceRaw) ?? .system).colorScheme)
     }
 
     private var header: String {
@@ -295,6 +298,7 @@ private struct FloatingRecordingPanelView: View {
     private var recording: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(timeLabel(state.elapsed)).font(.system(size: 29, weight: .medium, design: .monospaced))
+                .contentTransition(.numericText()).animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: Int(state.elapsed))
                 .accessibilityLabel("Kayıt süresi \(timeLabel(state.elapsed))")
             HStack(spacing: 14) {
                 meter("Mikrofon", value: state.microphoneLevel, icon: "mic.fill")

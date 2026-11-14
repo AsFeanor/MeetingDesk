@@ -1,0 +1,304 @@
+{
+  "synthetic": true,
+  "selectedMeetingID": "11111111-1111-4111-8111-000000000001",
+  "meetings": [
+    {
+      "id": "11111111-1111-4111-8111-000000000001",
+      "title": "Haftalık ürün buluşması",
+      "createdAt": "2026-11-14T09:00:00Z",
+      "duration": 2280,
+      "segments": [
+        {
+          "id": "s1",
+          "speaker": "Deniz",
+          "start": 0,
+          "end": 36,
+          "text": "Bugün yeni başlangıç deneyimini ve Kasım planını netleştirelim. Kullanıcıların ilk toplantıya daha rahat başlamasını istiyoruz."
+        },
+        {
+          "id": "s2",
+          "speaker": "Ece",
+          "start": 36,
+          "end": 72,
+          "text": "Ana ekranda tek bir kayıt düğmesi olsun. Mikrofon ve toplantı sesi ayrı göstergelerle izlensin. Yeni taslakları salıya kadar hazırlayacağım."
+        },
+        {
+          "id": "s3",
+          "speaker": "Bora",
+          "start": 72,
+          "end": 108,
+          "text": "Notlar konu başlıklarına göre düzenlensin. Kararları ve yapılacakları açıkça ayıralım; bütün transkripti yeniden yazmayalım."
+        },
+        {
+          "id": "s4",
+          "speaker": "Deniz",
+          "start": 108,
+          "end": 144,
+          "text": "Tamam, sade kayıt ekranını seçiyoruz. İki aşamalı başlangıç yerine tek ana düğmeyle ilerleyelim. Her nottan kaynağa gidilebilsin."
+        },
+        {
+          "id": "s5",
+          "speaker": "Can",
+          "start": 144,
+          "end": 180,
+          "text": "Klavye ile arama ve sekme değiştirme de olsun. Ben kısayolların erişilebilirliğini çarşambaya kadar kontrol edeceğim."
+        },
+        {
+          "id": "s6",
+          "speaker": "Ece",
+          "start": 180,
+          "end": 216,
+          "text": "Konuşmacıları kısa bir ses örneğiyle seçme akışını koruyalım. Sadece kişi adı ve net bir sonraki adım yeterli."
+        },
+        {
+          "id": "s7",
+          "speaker": "Bora",
+          "start": 216,
+          "end": 252,
+          "text": "Yeni not düzenini bir sonraki ekip toplantısında deneyebiliriz. Geri bildirimleri ben toparlayacağım."
+        },
+        {
+          "id": "s8",
+          "speaker": "Deniz",
+          "start": 252,
+          "end": 288,
+          "text": "Mobil paylaşım önizlemesini sonraki görüşmede ele alalım. Önce Mac ekranındaki kayıt ve not deneyimini tamamlayacağız."
+        }
+      ],
+      "notes": {
+        "summary": "Ekip, toplantı deneyimini daha sade ve okunaklı hale getirecek yeni arayüz üzerinde uzlaştı. Kayıt tek bir ana düğmeyle başlayacak; mikrofon ile toplantı sesi ayrı göstergelerden takip edilecek. Toplantı notları kısa bir genel özet, konu başlıkları ve açık yapılacaklar içerecek. Konuşmacı seçimi kısa ses örnekleriyle devam edecek. İlk taslaklar ve erişilebilirlik kontrolü gelecek hafta tamamlanacak. Yeni düzen bir sonraki ekip toplantısında denenip geri bildirim toplanacak. Mobil paylaşım önizlemesi sonraki görüşmeye bırakıldı.",
+        "decisions": [
+          {
+            "id": "d1",
+            "text": "Kayıt ekranında tek bir ana düğme ve iki ayrı ses göstergesi kullanılacak.",
+            "evidence": [
+              "s2",
+              "s4"
+            ]
+          },
+          {
+            "id": "d2",
+            "text": "Notlar kronolojik döküm yerine konular, kararlar ve yapılacaklar halinde sunulacak.",
+            "evidence": [
+              "s3"
+            ]
+          },
+          {
+            "id": "d3",
+            "text": "Kısa ses örneğiyle konuşmacı seçimi korunacak.",
+            "evidence": [
+              "s6"
+            ]
+          }
+        ],
+        "actions": [
+          {
+            "id": "a1",
+            "text": "Yeni başlangıç ekranının taslaklarını hazırla.",
+            "owner": "Ece",
+            "due": "17 Kasım 2026",
+            "evidence": [
+              "s2"
+            ]
+          },
+          {
+            "id": "a2",
+            "text": "Klavye kısayollarını erişilebilirlik açısından kontrol et.",
+            "owner": "Can",
+            "due": "18 Kasım 2026",
+            "evidence": [
+              "s5"
+            ]
+          },
+          {
+            "id": "a3",
+            "text": "Sonraki ekip toplantısından arayüz geri bildirimlerini topla.",
+            "owner": "Bora",
+            "due": null,
+            "evidence": [
+              "s7"
+            ]
+          }
+        ],
+        "questions": [
+          {
+            "id": "q1",
+            "text": "Mobil paylaşım önizlemesinde hangi düzen kullanılacak?",
+            "evidence": [
+              "s8"
+            ]
+          }
+        ],
+        "ideas": [],
+        "topics": [
+          {
+            "id": "t1",
+            "title": "Daha sakin bir kayıt deneyimi",
+            "text": "Tek kayıt düğmesi, ayrı ses göstergeleri ve görünür kayıt durumu temel akışı oluşturacak.",
+            "evidence": [
+              "s2",
+              "s4"
+            ],
+            "sectionID": "discussion"
+          },
+          {
+            "id": "t2",
+            "title": "Okunaklı toplantı notları",
+            "text": "Kısa özet ve konu başlıkları, kararlar ile sonraki adımların kolay bulunmasını sağlayacak.",
+            "evidence": [
+              "s3"
+            ],
+            "sectionID": "discussion"
+          },
+          {
+            "id": "t3",
+            "title": "Klavye ve konuşmacı akışları",
+            "text": "Arama ve sekme geçişleri klavyeden kullanılabilecek; konuşmacılar kısa örnek dinlenerek seçilecek.",
+            "evidence": [
+              "s5",
+              "s6"
+            ],
+            "sectionID": "discussion"
+          }
+        ]
+      },
+      "personalNotes": "İlk kullanımda asıl hedef: toplantıya başlamak için karar vermek zorunda kalmamak.\n\nYeni not düzenini ekipten iki kişiyle tekrar kontrol et.",
+      "speakerNames": {
+        "Deniz": "Deniz",
+        "Ece": "Ece",
+        "Bora": "Bora",
+        "Can": "Can"
+      },
+      "completedActions": [
+        "a1"
+      ],
+      "outputLanguage": "Türkçe",
+      "notesNeedRefresh": false,
+      "source": "Mac kaydı",
+      "transcriptionEngine": "local",
+      "notesEngine": "local-qwen3.5:9b",
+      "speechLanguage": "Türkçe",
+      "transcribedLanguage": "Türkçe",
+      "templateRawValue": "general",
+      "notesTemplateRawValue": "general",
+      "audioFileName": "recording.wav",
+      "microphoneDeviceName": "MacBook Pro Mikrofonu",
+      "microphoneGain": 2
+    },
+    {
+      "id": "11111111-1111-4111-8111-000000000002",
+      "title": "Tasarım değerlendirmesi",
+      "createdAt": "2026-11-14T07:30:00Z",
+      "duration": 1740,
+      "segments": [],
+      "notes": null,
+      "personalNotes": "",
+      "speakerNames": {},
+      "completedActions": [],
+      "outputLanguage": "Türkçe",
+      "notesNeedRefresh": false,
+      "source": "Mac kaydı",
+      "transcriptionEngine": "local",
+      "notesEngine": null,
+      "speechLanguage": "Türkçe",
+      "transcribedLanguage": null,
+      "templateRawValue": "general",
+      "notesTemplateRawValue": null,
+      "audioFileName": null,
+      "microphoneDeviceName": null,
+      "microphoneGain": null
+    },
+    {
+      "id": "11111111-1111-4111-8111-000000000003",
+      "title": "Müşteri deneyimi ve ürün yol haritası · Kasım planlama",
+      "createdAt": "2026-11-13T12:00:00Z",
+      "duration": 3120,
+      "segments": [],
+      "notes": null,
+      "personalNotes": "",
+      "speakerNames": {},
+      "completedActions": [],
+      "outputLanguage": "Türkçe",
+      "notesNeedRefresh": false,
+      "source": "Mac kaydı",
+      "transcriptionEngine": "local",
+      "notesEngine": null,
+      "speechLanguage": "Türkçe",
+      "transcribedLanguage": null,
+      "templateRawValue": "general",
+      "notesTemplateRawValue": null,
+      "audioFileName": null,
+      "microphoneDeviceName": null,
+      "microphoneGain": null
+    },
+    {
+      "id": "11111111-1111-4111-8111-000000000004",
+      "title": "Ekip eşleştirme",
+      "createdAt": "2026-11-13T08:30:00Z",
+      "duration": 960,
+      "segments": [],
+      "notes": null,
+      "personalNotes": "",
+      "speakerNames": {},
+      "completedActions": [],
+      "outputLanguage": "Türkçe",
+      "notesNeedRefresh": false,
+      "source": "Mac kaydı",
+      "transcriptionEngine": "local",
+      "notesEngine": null,
+      "speechLanguage": "Türkçe",
+      "transcribedLanguage": null,
+      "templateRawValue": "general",
+      "notesTemplateRawValue": null,
+      "audioFileName": null,
+      "microphoneDeviceName": null,
+      "microphoneGain": null
+    },
+    {
+      "id": "11111111-1111-4111-8111-000000000005",
+      "title": "Yeni fikirler",
+      "createdAt": "2026-11-12T11:00:00Z",
+      "duration": 1380,
+      "segments": [],
+      "notes": null,
+      "personalNotes": "",
+      "speakerNames": {},
+      "completedActions": [],
+      "outputLanguage": "Türkçe",
+      "notesNeedRefresh": false,
+      "source": "Mac kaydı",
+      "transcriptionEngine": "local",
+      "notesEngine": null,
+      "speechLanguage": "Türkçe",
+      "transcribedLanguage": null,
+      "templateRawValue": "general",
+      "notesTemplateRawValue": null,
+      "audioFileName": null,
+      "microphoneDeviceName": null,
+      "microphoneGain": null
+    },
+    {
+      "id": "11111111-1111-4111-8111-000000000006",
+      "title": "Bir sonraki toplantı",
+      "createdAt": "2026-11-11T09:00:00Z",
+      "duration": 0,
+      "segments": [],
+      "notes": null,
+      "personalNotes": "",
+      "speakerNames": {},
+      "completedActions": [],
+      "outputLanguage": "Türkçe",
+      "notesNeedRefresh": false,
+      "source": "Mac kaydı",
+      "transcriptionEngine": "local",
+      "notesEngine": null,
+      "speechLanguage": "Türkçe",
+      "transcribedLanguage": null,
+      "templateRawValue": "general",
+      "notesTemplateRawValue": null,
+      "audioFileName": null,
+      "microphoneDeviceName": null,
+      "microphoneGain": null
+    }
+  ]
+}
