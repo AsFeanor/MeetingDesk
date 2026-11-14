@@ -6,6 +6,7 @@ struct MeetingDeskApp: App {
     @StateObject private var store = AppStore()
     @NSApplicationDelegateAdaptor(MeetingAppDelegate.self) private var delegate
     @Environment(\.openWindow) private var openWindow
+    @FocusedValue(\.workspaceQuickOpen) private var quickOpen
 
     var body: some Scene {
         WindowGroup("Toplantı", id: "main") {
@@ -15,18 +16,22 @@ struct MeetingDeskApp: App {
                     delegate.onOpenMainWindow = { openWindow(id: "main") }
                 }
                 .frame(minWidth: 900, minHeight: 620)
-                .tint(Color(red: 0.05, green: 0.42, blue: 0.36))
+                .tint(WorkspaceStyle.accent)
         }
-        .defaultSize(width: 1120, height: 780)
+        .defaultSize(width: 1280, height: 850)
+        .windowToolbarStyle(.unifiedCompact)
         .commands {
             CommandGroup(after: .appInfo) {
                 UpdateMenu(updater: store.updates)
             }
             CommandGroup(replacing: .newItem) {
-                Button("Yeni toplantı") { _ = store.newMeeting() }
+                Button("Yeni toplantı") { guard !store.workInProgress else { return }; _ = store.newMeeting() }
                     .keyboardShortcut("n").disabled(store.workInProgress)
                 Button("Kayıt içe aktar…") { store.importAudio() }
                     .disabled(store.workInProgress)
+            }
+            CommandGroup(after: .newItem) {
+                Button("Toplantı bul…") { quickOpen?() }.keyboardShortcut("k").disabled(quickOpen == nil)
             }
             CommandGroup(after: .appSettings) {
                 Button("Ayarlar…") { store.showSettings = true; openWindow(id: "main") }
@@ -44,6 +49,7 @@ struct MeetingDeskApp: App {
                     .disabled(store.isBusy)
             } else {
                 Button("Yeni kayıt başlat") {
+                    guard !store.workInProgress else { return }
                     _ = store.newMeeting()
                     openWindow(id: "main")
                     Task { await store.startRecording() }

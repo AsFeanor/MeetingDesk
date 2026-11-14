@@ -4,7 +4,28 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-**0.7.0 / yapı 19** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+**0.8.0 / yapı 20** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+
+## Yeni çalışma alanı
+
+Açık, koyu veya sistem görünümünü sol alt köşeden seçin. Toplantılar solda aranır; notlar ortada, dil/şablon ve içerik haritası sağdaki ayrıntı panelindedir. Dar pencerede sağ üstteki panel düğmesi ayrıntıları açar.
+
+- **⌘K:** toplantı başlığı, kişi, transkript veya not içeriğiyle hızlı açma.
+- **⌘1 / ⌘2 / ⌘3:** özet, transkript ve kişisel notlar.
+- **Açık aksiyonlar:** bekleyen işi olan toplantıları süzme; toplantı içinde yalnız açık görevleri gösterme.
+- **Transkriptte ara:** konuşma veya konuşmacı arama; kaynak bağlantıları aramayı temizleyip doğru bölüme gider.
+- **Ayarlar:** kayıt, model, konuşmacılar, saklama, Notion ve güncellemeler ayrı bölümlerde.
+
+Aşağıdaki ekranlar gerçek arayüzün yalnız sentetik örnek verilerle oluşturulmuş yerel görüntüleridir.
+
+![Açık çalışma alanı](docs/images/workspace-light.png)
+
+<details>
+<summary>Koyu görünüm</summary>
+
+![Koyu çalışma alanı](docs/images/workspace-dark.png)
+
+</details>
 
 ## Kısa toplantı notları
 

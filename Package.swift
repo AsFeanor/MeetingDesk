@@ -12,6 +12,6 @@ let package = Package(
         .executableTarget(name: "MeetingDesk", dependencies: [.product(name: "Sparkle", package: "Sparkle"), .product(name: "FluidAudio", package: "FluidAudio")],
                           swiftSettings: [.swiftLanguageMode(.v5)],
                           linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
-        .testTarget(name: "MeetingDeskTests", dependencies: ["MeetingDesk"], exclude: ["SpeakerFixtures"], swiftSettings: [.swiftLanguageMode(.v5)])
+        .testTarget(name: "MeetingDeskTests", dependencies: ["MeetingDesk"], exclude: ["SpeakerFixtures", "WorkspaceFixtures"], swiftSettings: [.swiftLanguageMode(.v5)])
     ]
 )
