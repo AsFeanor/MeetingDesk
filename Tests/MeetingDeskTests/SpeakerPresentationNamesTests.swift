@@ -5,8 +5,11 @@ final class SpeakerPresentationNamesTests: XCTestCase {
     func testBatchedNamesPreserveSingleNamePrecedenceFallbackOrderAndLegacyLabels() {
         let person = SpeakerReviewPerson(name: "  Manuel ad  ")
         var value = Meeting(title: "Sentetik adlar")
-        value.segments = ["system:C", "system:B", "system:A", "system:D", "system:E", "Mikrofon"].enumerated().map {
-            TranscriptSegment(id: "s\($0.offset)", speaker: $0.element, start: Double($0.offset * 5), end: Double($0.offset * 5 + 4), text: "Konuşma")
+        let speakers: [String] = ["system:C", "system:B", "system:A", "system:D", "system:E", "Mikrofon"]
+        for (index, speaker) in speakers.enumerated() {
+            let start = Double(index) * 5.0
+            let segment = TranscriptSegment(id: "s\(index)", speaker: speaker, start: start, end: start + 4.0, text: "Konuşma")
+            value.segments.append(segment)
         }
         value.speakerReviewPeople = [person, SpeakerReviewPerson(id: person.id, name: "İkinci bozuk kayıt")]
         value.speakerReviewAssignments = ["system:C": person.id]
