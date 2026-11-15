@@ -329,7 +329,7 @@ struct LocalSummaryService {
         }
         var result: [[Source]] = []
         var chunk: [Source] = []
-        for segment in meeting.segments {
+        for segment in TranscriptConversation.orderedSegments(meeting.segments) {
             guard segment.start.isFinite, segment.end.isFinite, segment.start >= 0, segment.end >= segment.start,
                   segment.id.utf8.count <= 256, segment.speaker.utf8.count <= 512,
                   (meeting.speakerNames[segment.speaker]?.utf8.count ?? 0) <= 512 else {

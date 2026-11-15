@@ -23,6 +23,7 @@ struct SpeakerReviewWizard: View {
     @State private var listenedSampleID: String?
     @State private var showSummary = false
     @State private var saveAttempted = false
+    @State private var lastSavedPersonID: UUID?
 
     init(store: AppStore, meetingID: UUID, initialSpeakerID: String? = nil) {
         self.store = store
@@ -31,7 +32,8 @@ struct SpeakerReviewWizard: View {
     }
 
     private var meeting: Meeting? { store.meetings.first(where: { $0.id == meetingID }) }
-    private var speakerIDs: [String] { reviewOrder.isEmpty ? (meeting.map { SpeakerReviewPolicy.speakerIDs(in: $0) } ?? []) : reviewOrder }
+    private var allSpeakerIDs: [String] { meeting.map { SpeakerReviewQueue.allSpeakerIDs(in: $0) } ?? [] }
+    private var speakerIDs: [String] { reviewOrder }
     private var speakerID: String? { speakerIDs.indices.contains(step) ? speakerIDs[step] : nil }
     private var unavailable: Bool { store.workInProgress || store.preparingSpeakerModels }
     private var samples: [SpeakerReviewSample] {
@@ -56,6 +58,18 @@ struct SpeakerReviewWizard: View {
     }
     private var canRemember: Bool {
         sample?.canRemember == true && canPlay && store.speakerModelsReady && listenedSampleID == sample?.id
+    }
+    private var previousPersonSelection: SpeakerReviewSelection? {
+        guard let meeting, let speakerID else { return nil }
+        return SpeakerReviewQueue.reusablePreviousPerson(in: meeting, speakerID: speakerID,
+            previousPersonID: lastSavedPersonID, sample: sample,
+            listenedSampleID: listenedSampleID, audioAvailable: canPlay)
+    }
+    private var previousPersonName: String? {
+        guard let meeting, let personID = lastSavedPersonID,
+              let speakerID, SpeakerReviewQueue.identifiedKey(for: speakerID, in: meeting) == nil else { return nil }
+        let matches = (meeting.speakerReviewPeople ?? []).filter { $0.id == personID }
+        return matches.count == 1 ? matches.first?.name : nil
     }
     private var choices: [ReviewChoice] {
         guard let meeting else { return [] }
@@ -86,7 +100,7 @@ struct SpeakerReviewWizard: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider().padding(.top, 18)
-            if meeting == nil || speakerIDs.isEmpty {
+            if meeting == nil || allSpeakerIDs.isEmpty {
                 ContentUnavailableView("Bu toplantıda gözden geçirilecek ses yok", systemImage: "person.wave.2")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if showSummary {
@@ -102,22 +116,31 @@ struct SpeakerReviewWizard: View {
         .interactiveDismissDisabled(unavailable)
         .onAppear {
             store.stopPlayback()
-            reviewOrder = meeting.map { SpeakerReviewPolicy.speakerIDs(in: $0) } ?? []
-            if let initialSpeakerID, let index = speakerIDs.firstIndex(of: initialSpeakerID) { step = index }
+            let pending = meeting.map { SpeakerReviewQueue.pendingSpeakerIDs(in: $0) } ?? []
+            if let initialSpeakerID, allSpeakerIDs.contains(initialSpeakerID) {
+                reviewOrder = [initialSpeakerID] + pending.filter { $0 != initialSpeakerID }
+            } else {
+                reviewOrder = pending
+            }
+            showSummary = reviewOrder.isEmpty
+            step = 0
             loadCurrentChoice()
         }
         .onChange(of: step) { _, _ in resetForStep() }
         .onChange(of: selectedChoice) { _, _ in rememberVoice = false }
-        .onChange(of: store.selectedID) { _, id in if id != meetingID { dismiss() } }
-        .onDisappear { store.stopSpeakerSample() }
+        .onChange(of: sample?.id) { _, _ in listenedSampleID = nil; rememberVoice = false }
+        .onChange(of: store.selectedID) { _, id in
+            if id != meetingID { lastSavedPersonID = nil; listenedSampleID = nil; dismiss() }
+        }
+        .onDisappear { lastSavedPersonID = nil; listenedSampleID = nil; store.stopSpeakerSample() }
     }
 
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(showSummary ? "Seçtiğin kişiler" : "Bu kim?").font(.title2.weight(.semibold))
+                Text(showSummary ? "Konuşmacılar" : "Bu kim?").font(.title2.weight(.semibold))
                 if let meeting { Text(meeting.title).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                Text(showSummary ? "İsimler bu toplantıya uygulandı." : "Kısa örneği dinle, sonra kişiyi seç.")
+                Text(showSummary ? "Eşleşen sesler kişi başına bir arada gösterilir." : "Henüz seçilmemiş bir sesi dinle, sonra kişiyi seç.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
@@ -135,6 +158,15 @@ struct SpeakerReviewWizard: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 samplePlayer
+                if let name = previousPersonName {
+                    Button { savePreviousPerson() } label: {
+                        Label("Dinlediğim bu ses de \(name) adlı kişiye ait", systemImage: "person.crop.circle.badge.checkmark")
+                            .multilineTextAlignment(.leading)
+                    }
+                    .buttonStyle(.bordered).font(.callout)
+                    .disabled(unavailable || previousPersonSelection == nil)
+                    .help("Önce bu örneği dinle. Onayladığında yalnız bu ses aynı kişiye bağlanır; ses profiline yeni örnek eklenmez.")
+                }
                 VStack(alignment: .leading, spacing: 10) {
                     Picker("Bu kişi", selection: $selectedChoice) {
                         Text("Kişi seç").tag("unselected")
@@ -156,7 +188,7 @@ struct SpeakerReviewWizard: View {
                         Button("Önerilen kişiyi seç: \(choice.name)") { selectedChoice = choice.id }
                             .font(.caption).disabled(unavailable)
                     }
-                    Text("Aynı kişi başka örneklerde de çıkabilir; listeden aynı ismi seç.")
+                    Text("Bir kişiye ait farklı sesler varsa listeden aynı kişiyi seç. Önceden eşleşen sesler tekrar sorulmaz.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 7) {
@@ -207,7 +239,7 @@ struct SpeakerReviewWizard: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(playingThisSample ? "Örneği durdur" : "Örneği dinle").font(.headline)
                         if let sample {
-                            Text("\(timeLabel(sample.duration)) · \(timeLabel(sample.start)) konumundan")
+                            Text("\(sampleSourceLabel(sample)) · \(timeLabel(sample.duration)) · \(timeLabel(sample.start))")
                                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         }
                     }
@@ -243,21 +275,21 @@ struct SpeakerReviewWizard: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let meeting {
-                    let people = reviewSummary(in: meeting)
-                    let unnamed = speakerIDs.filter { meeting.speakerReviewAssignments?[$0] == nil }.count
-                    Text("\(people.count) kişi seçildi").font(.title3.weight(.semibold))
+                    let people = SpeakerReviewQueue.identifiedGroups(in: meeting)
+                    let unnamed = SpeakerReviewQueue.pendingSpeakerIDs(in: meeting).count
+                    Text("\(people.count) kişi eşleşti").font(.title3.weight(.semibold))
                     ForEach(people) { person in
                         HStack(spacing: 12) {
                             Image(systemName: "person.crop.circle.fill").font(.title2).foregroundStyle(.tint)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(person.name).font(.headline)
-                                Text("\(person.voiceCount) ses bu kişiye bağlandı").font(.caption).foregroundStyle(.secondary)
+                                Text(person.speakerIDs.count == 1 ? "1 ses bu kişiye bağlandı" : "\(person.speakerIDs.count) ses grubu tek kişi olarak gösterilir").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             Button("Gözden geçir") {
-                                guard let index = speakerIDs.firstIndex(where: { meeting.speakerReviewAssignments?[$0] == person.id }) else { return }
+                                reviewOrder = person.speakerIDs
                                 showSummary = false
-                                step = index
+                                step = 0
                                 resetForStep()
                             }.font(.caption).disabled(unavailable)
                         }
@@ -278,7 +310,10 @@ struct SpeakerReviewWizard: View {
     private var footer: some View {
         HStack(spacing: 12) {
             if showSummary {
-                Button("Sesleri gözden geçir") { showSummary = false; step = 0; resetForStep() }.disabled(unavailable)
+                Button("Tüm sesleri gözden geçir") {
+                    reviewOrder = allSpeakerIDs
+                    showSummary = false; step = 0; resetForStep()
+                }.disabled(unavailable || allSpeakerIDs.isEmpty)
                 Spacer()
                 Button("Bitti") { dismiss() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(unavailable)
             } else if speakerIDs.isEmpty || meeting == nil {
@@ -326,23 +361,45 @@ struct SpeakerReviewWizard: View {
     }
 
     private func saveCurrent() {
-        guard !unavailable, let speakerID, let selection else { return }
+        guard let selection else { return }
+        save(selection: selection, shouldRemember: rememberVoice && canRemember)
+    }
+
+    private func savePreviousPerson() {
+        guard !unavailable, store.selectedID == meetingID,
+              let selection = previousPersonSelection, let personID = selection.personID else { return }
+        // This is an explicit current-voice confirmation, never a bulk assignment
+        // or a voice-profile enrollment. The picker is set only after the click.
+        selectedChoice = "person:" + personID.uuidString
+        rememberVoice = false
+        save(selection: selection, shouldRemember: false)
+    }
+
+    private func save(selection: SpeakerReviewSelection, shouldRemember: Bool) {
+        guard !unavailable, let speakerID, store.selectedID == meetingID else { return }
         store.stopSpeakerSample()
         store.errorMessage = nil
         saveAttempted = true
         store.saveSpeakerReview(meetingID: meetingID, speakerID: speakerID, selection: selection,
-                                rememberVoice: rememberVoice && canRemember, sample: sample) {
+                                rememberVoice: shouldRemember, sample: sample) {
+            if let current = meeting,
+               let personID = current.speakerReviewAssignments?[speakerID],
+               current.speakerReviewPeople?.filter({ $0.id == personID }).count == 1 {
+                lastSavedPersonID = personID
+            } else { lastSavedPersonID = nil }
             saveAttempted = false
             nextStep()
         }
     }
 
-    private func reviewSummary(in meeting: Meeting) -> [ReviewSummaryPerson] {
-        (meeting.speakerReviewPeople ?? []).compactMap { person in
-            let count = speakerIDs.filter { meeting.speakerReviewAssignments?[$0] == person.id }.count
-            return count > 0 ? ReviewSummaryPerson(id: person.id, name: person.name, voiceCount: count) : nil
+    private func sampleSourceLabel(_ sample: SpeakerReviewSample) -> String {
+        switch sample.source {
+        case .microphone: return "Mikrofon"
+        case .system: return "Toplantı sesi"
+        case .mixed: return "Birleşik kayıt"
         }
     }
+
 }
 
 private struct ReviewChoice: Identifiable {
@@ -350,10 +407,4 @@ private struct ReviewChoice: Identifiable {
     let name: String
     let personID: UUID?
     let voiceProfileID: UUID?
-}
-
-private struct ReviewSummaryPerson: Identifiable {
-    let id: UUID
-    let name: String
-    let voiceCount: Int
 }

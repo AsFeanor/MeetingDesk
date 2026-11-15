@@ -25,9 +25,9 @@ enum SpeakerTranscriptAlignment {
                 result.append(value)
                 continue
             }
+            let speakers = formattingAwareSpeakers(words: words, turns: candidates, source: source)
             var groups: [(String, [TranscriptWord])] = []
-            for word in words {
-                let speaker = bestSpeaker(start: word.start, end: word.end, turns: candidates, minimumCoverage: 0.6) ?? sourceLabel(source)
+            for (word, speaker) in zip(words, speakers) {
                 if groups.last?.0 == speaker { groups[groups.count - 1].1.append(word) }
                 else { groups.append((speaker, [word])) }
             }
@@ -39,7 +39,48 @@ enum SpeakerTranscriptAlignment {
                     words: group.1, audioSource: source))
             }
         }
-        return result
+        // A single source utterance can become several speaker fragments. Its
+        // later fragments must not precede another track's earlier utterance.
+        // Preserve the original merge order for genuinely simultaneous starts.
+        try Task.checkCancellation()
+        let chronological = result.enumerated().sorted { first, second in
+            if first.element.start != second.element.start { return first.element.start < second.element.start }
+            return first.offset < second.offset
+        }.map(\.element)
+        try Task.checkCancellation()
+        return chronological
+    }
+
+    /// Zero-duration punctuation has no acoustic identity. Keep its original
+    /// word/timing attached to an unambiguous neighboring voice instead of
+    /// generating an isolated source-label card. Lexical words and positive
+    /// duration formatting still use the normal coverage/overlap rules.
+    private static func formattingAwareSpeakers(words: [TranscriptWord], turns: [SpeakerTurn], source: SpeakerAudioSource) -> [String] {
+        let fallback = sourceLabel(source)
+        var speakers = words.map { bestSpeaker(start: $0.start, end: $0.end, turns: turns, minimumCoverage: 0.6) ?? fallback }
+        let formatting = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+        let zeroFormatting = words.map { word in
+            word.start == word.end && !word.text.isEmpty && word.text.unicodeScalars.allSatisfy { formatting.contains($0) }
+        }
+        var preceding = [String?](repeating: nil, count: words.count)
+        var following = [String?](repeating: nil, count: words.count)
+        var neighbor: String?
+        for index in words.indices {
+            preceding[index] = neighbor
+            if !zeroFormatting[index] { neighbor = speakers[index] }
+        }
+        neighbor = nil
+        for index in words.indices.reversed() {
+            following[index] = neighbor
+            if !zeroFormatting[index] { neighbor = speakers[index] }
+        }
+        for index in words.indices where zeroFormatting[index] {
+            let neighbors = [preceding[index], following[index]].compactMap { $0 }
+            guard let voice = neighbors.first, voice != fallback,
+                  neighbors.allSatisfy({ $0 == voice }) else { continue }
+            speakers[index] = voice
+        }
+        return speakers
     }
 
     private static func sourceLabel(_ source: SpeakerAudioSource) -> String {

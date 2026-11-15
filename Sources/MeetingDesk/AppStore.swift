@@ -60,6 +60,7 @@ final class AppStore: ObservableObject {
     @Published var playbackDuration: Double = 0
     @Published var isPlaying = false
     @Published var playingSpeakerSampleID: String?
+    @Published private(set) var playingEvidenceID: String?
     private var playbackEndTime: Double?
     private var playbackStopTimer: Timer?
 
@@ -318,10 +319,11 @@ final class AppStore: ObservableObject {
                 self.playbackTime = player.currentTime
                 self.isPlaying = player.isPlaying
                 if let end = self.playbackEndTime, player.currentTime >= end {
+                    if self.playingEvidenceID != nil { self.stopPlayback(); return }
                     player.pause()
                     self.playbackTime = end
                     self.isPlaying = false
-                    self.playbackEndTime = nil
+                    self.playbackEndTime = nil; self.playingEvidenceID = nil
                 }
             }
         }
@@ -745,7 +747,7 @@ final class AppStore: ObservableObject {
 
     func togglePlayback() {
         playbackStopTimer?.invalidate(); playbackStopTimer = nil
-        playbackEndTime = nil; playingSpeakerSampleID = nil
+        playbackEndTime = nil; playingSpeakerSampleID = nil; playingEvidenceID = nil
         guard let meeting = selected, let url = library.audioURL(for: meeting, source: playbackSource), FileManager.default.fileExists(atPath: url.path), !recorder.isRecording else { return }
         do {
             if playbackID != meeting.id {
@@ -763,7 +765,7 @@ final class AppStore: ObservableObject {
 
     func seek(_ time: Double) {
         playbackStopTimer?.invalidate(); playbackStopTimer = nil
-        playbackEndTime = nil; playingSpeakerSampleID = nil
+        playbackEndTime = nil; playingSpeakerSampleID = nil; playingEvidenceID = nil
         guard let meeting = selected, let url = library.audioURL(for: meeting, source: playbackSource), FileManager.default.fileExists(atPath: url.path), !recorder.isRecording else { return }
         do {
             if playbackID != meeting.id {
@@ -810,13 +812,44 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func availableEvidenceExcerpts(in meeting: Meeting, evidence: [String]) -> [EvidenceAudioExcerpt] {
+        EvidenceAudioPreview.excerpts(in: meeting, evidence: evidence).filter { excerpt in
+            guard let url = library.audioURL(for: meeting, source: excerpt.playbackSource) else { return false }
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+    }
+
+    func playEvidenceExcerpt(_ excerpt: EvidenceAudioExcerpt, meetingID: UUID) {
+        guard !workInProgress, let meeting = selected, meeting.id == meetingID,
+              availableEvidenceExcerpts(in: meeting, evidence: [excerpt.segmentID]).contains(excerpt) else { return }
+        if playingEvidenceID == excerpt.id && isPlaying { stopPlayback(); return }
+        playbackSource = excerpt.playbackSource
+        seek(excerpt.start)
+        guard let player, player.duration.isFinite, player.currentTime < player.duration,
+              excerpt.start < player.duration else { stopPlayback(); return }
+        let end = min(excerpt.end, player.duration)
+        guard end > player.currentTime else { stopPlayback(); return }
+        playbackEndTime = end
+        playingEvidenceID = excerpt.id
+        player.prepareToPlay(); isPlaying = player.play()
+        guard isPlaying else { stopPlayback(); return }
+        let timer = Timer(timeInterval: max(0.01, end - player.currentTime), repeats: false) { [weak self, weak player] _ in
+            Task { @MainActor in
+                guard let self, let player, self.player === player, self.playingEvidenceID == excerpt.id else { return }
+                self.stopPlayback()
+            }
+        }
+        playbackStopTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
     func stopSpeakerSample() {
         if playingSpeakerSampleID != nil { stopPlayback() }
     }
 
     func stopPlayback() {
         playbackStopTimer?.invalidate(); playbackStopTimer = nil
-        playbackEndTime = nil; playingSpeakerSampleID = nil
+        playbackEndTime = nil; playingSpeakerSampleID = nil; playingEvidenceID = nil
         player?.stop(); player = nil; playbackID = nil
         playbackTime = 0; playbackDuration = 0; isPlaying = false
         if audioRetentionCleanupPending && systemServicesEnabled {

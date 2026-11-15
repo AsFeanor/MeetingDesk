@@ -276,7 +276,9 @@ enum MeetingExport {
         if includesTranscript {
             heading("Transkript")
             if meeting.segments.isEmpty { append(.paragraph, "Henüz transkript oluşturulmadı.") }
-            for segment in meeting.segments {
+            // PDF, Markdown, plain text and Notion share these same blocks.
+            // Preserve source IDs/text while repairing old archive display order.
+            for segment in TranscriptConversation.orderedSegments(meeting.segments) {
                 let anchor = segment.id.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;")
                 append(.anchor, "", markdown: "<a id=\"\(anchor)\"></a>")
                 let label = "\(timeLabel(segment.start)) · \(meeting.speakerName(segment.speaker))"

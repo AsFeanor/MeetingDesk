@@ -222,18 +222,12 @@ final class OllamaSummaryService: @unchecked Sendable {
         guard meeting.segments.contains(where: { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
               Set(meeting.segments.map(\.id)).count == meeting.segments.count,
               meeting.segments.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end >= $0.start }) else { throw Failure.invalidSources }
-        return try orderedSegments(meeting).enumerated().map { index, segment in
+        return try TranscriptConversation.orderedSegments(meeting.segments).enumerated().map { index, segment in
             guard !segment.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   segment.start.isFinite, segment.end.isFinite, segment.start >= 0, segment.end >= segment.start else { throw Failure.invalidSources }
             return Source(id: "s\(index + 1)", text: segment.text,
                           providedSpeakerName: providedName(meeting.speakerNames[segment.speaker], speakerID: segment.speaker))
         }
-    }
-
-    private static func orderedSegments(_ meeting: Meeting) -> [TranscriptSegment] {
-        meeting.segments.enumerated().sorted {
-            $0.element.start == $1.element.start ? $0.offset < $1.offset : $0.element.start < $1.element.start
-        }.map(\.element)
     }
 
     private static func providedName(_ value: String?, speakerID: String) -> String? {
@@ -286,7 +280,7 @@ final class OllamaSummaryService: @unchecked Sendable {
         let wire = try object(encoded)
         try exactKeys(wire, ["summary", "decisions", "actions", "questions", "ideas", "topics"])
         let summary = try nonempty(wire["summary"])
-        let aliases = Dictionary(uniqueKeysWithValues: orderedSegments(meeting).enumerated().map { ("s\($0.offset + 1)", $0.element.id) })
+        let aliases = Dictionary(uniqueKeysWithValues: TranscriptConversation.orderedSegments(meeting.segments).enumerated().map { ("s\($0.offset + 1)", $0.element.id) })
         func evidence(_ item: [String: Any]) throws -> [String] {
             guard let values = item["evidence"] as? [String], !values.isEmpty else { throw Failure.invalidNotes }
             return try values.map { alias in

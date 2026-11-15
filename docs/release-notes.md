@@ -1,9 +1,9 @@
-# Toplantı 0.8.0
+# Toplantı 0.9.0
 
-- Arayüz yenilendi: aranabilir arşiv, ferah toplantı notları, gerektiğinde açılan ayrıntılar ve içerik haritası.
-- Açık, koyu ve sistem teması; tercih uygulamada ve küçük kayıt kartında korunur.
-- ⌘K ile toplantı bulma, ⌘1/2/3 ile sekmeler, transkript içinde arama ve yalnız açık görevleri gösterme filtresi.
-- Kayıt kontrolleri sadeleştirildi. Gerçek mikrofon ve toplantı sesi göstergeleri, yumuşak sekme geçişleri ve süre animasyonu eklendi; Hareketi Azalt ayarı gözetilir.
-- Ayarlar bölümlere ayrıldı. Bir kişiye eşleştirilmiş birden fazla ses grubu ayrıntı panelinde tek kişi olarak gösterilir.
+- Önceki toplantıyı bağlayıp açık işleri hatırlatma eklendi. Bir işi tamamlamak özgün toplantıdaki maddeyi günceller; yeni nota kopyalanmaz.
+- Kaynaklı not maddelerinde kısa ses dinleme: metne veya Dinle’ye tıklayın. Doğru ses kanalı kullanılır; 12 saniyeye kadar parça kendiliğinden durur.
+- Konuşmacı ayrımından sonra zaman sırasının bozulmasına yol açan hata ve noktalamanın ayrı konuşmacı parçaları oluşturması düzeltildi. Eski transkriptlerin okuma sırası da dosyaları yeniden yazmadan düzelir.
+- Akıcı transkript, kaynak filtresi ve isteğe bağlı çift mikrofon metni süzme eklendi. Özgün metinler ve sesler korunur; tüm parçalar açılabilir. Tam dışa aktarım zaman sırasındadır.
+- Eşleştirilmiş konuşmacılar tekrar sorulmaz. Kısa örneklerin ses kaynağı görünür; yeni örneği dinledikten sonra son seçilen kişi tek düğmeyle tekrar onaylanabilir.
 
-Mevcut kayıtlar, transkriptler, notlar ve ses profilleri kullanılmaya devam eder. Yeniden transkript veya özet oluşturmak gerekmez.
+Mevcut kayıtları veya konuşmacı eşleştirmelerini yeniden oluşturmanız gerekmez. Yeni okuma görünümü mevcut transkriptlerde de çalışır.

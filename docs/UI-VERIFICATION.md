@@ -25,3 +25,11 @@ python3 Scripts/render-workspace.py --output-dir /tmp/meetingdesk-ui-review
 Betik en fazla 60 saniye çalışır, yalnız açıkça seçilmiş görsel testi çalıştırır ve kaynak/örnek veri özetlerini rapora kaydeder. Örnek veri Tests/MeetingDeskTests/WorkspaceFixtures altındadır. Normal CI’da bu test isteğe bağlı olduğu için atlanır.
 
 Görsel yerleşim sonucu: geçti. Canlı kullanıcı kabulü ayrıca değerlendirilir.
+
+## 0.9.0 ek kontrolleri
+
+- 544 testlik Swift paketinde hata bulunmadı; bu Mac’te 8 donanım/isteğe bağlı kontrol atlandı. Paketleme için 22 test geçti. Yerel ses çıkışı bulunmadığı için dijital sessizlikle kısa parçanın otomatik bitmesi testi burada atlandı; oynatma penceresi, kanal, eski kaynak ve dosya sınırları ayrı davranış testleriyle kontrol edildi. Bu bir canlı mikrofon/kurulum kanıtı değildir.
+- Gerçek kullanıcı tarafından seçilmiş iki arşiv yalnız Mac’te, salt okunur yeniden oynatma kontrolünden geçti. Zaman geri sıçramaları sıfırlandı, özgün segmentlerin saklandığı ve dosya özetlerinin değişmediği doğrulandı. Özel içerik bu depoya eklenmedi veya ağa gönderilmedi.
+- 16 sentetik yerel görüntü incelendi: önceki 14 görünüm ve iki temada gerçek TranscriptWorkspaceView. İlk görsel kontrolde hatırlatma kartının içerik haritasına yerleşmesi ve bağımsız transkriptin şeffaf arka plan/etiket sorunları bulundu; kart ana nota taşındı, görünümün tema/etiketleri düzeltildi ve tekrar çizildi.
+- Kayıt başlatma en küçük pencerede görünür; hatırlatma ayrıntıları varsayılan kapalıdır. Akıcı görünümde her ufak parça için büyük bir kart çizilmez. Kaynak filtresi ve özgün parçaları açma kontrolleri korunur.
+- Mouse/klavye ile canlı etkileşim, yeni ASR çıktısının kelime doğruluğu ve uygulama içinden kurulum bu kontrolle kanıtlanmış sayılmaz.

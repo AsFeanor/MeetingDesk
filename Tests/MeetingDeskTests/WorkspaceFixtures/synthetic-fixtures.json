@@ -183,7 +183,8 @@
       "notesTemplateRawValue": "general",
       "audioFileName": "recording.wav",
       "microphoneDeviceName": "MacBook Pro Mikrofonu",
-      "microphoneGain": 2
+      "microphoneGain": 2,
+      "previousMeetingID": "11111111-1111-4111-8111-000000000002"
     },
     {
       "id": "11111111-1111-4111-8111-000000000002",
@@ -191,7 +192,29 @@
       "createdAt": "2026-11-14T07:30:00Z",
       "duration": 1740,
       "segments": [],
-      "notes": null,
+      "notes": {
+        "summary": "Önceki örnek toplantı.",
+        "decisions": [],
+        "actions": [
+          {
+            "id": "prior-contrast",
+            "text": "Açık ve koyu temanın renk kontrastını kontrol et.",
+            "owner": null,
+            "due": null,
+            "evidence": []
+          },
+          {
+            "id": "prior-feedback",
+            "text": "Örnek kayıt akışından geri bildirim topla.",
+            "owner": "Deniz",
+            "due": null,
+            "evidence": []
+          }
+        ],
+        "questions": [],
+        "ideas": [],
+        "topics": []
+      },
       "personalNotes": "",
       "speakerNames": {},
       "completedActions": [],

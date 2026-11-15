@@ -14,19 +14,14 @@ enum WorkspaceParticipants {
         var seen = Set<String>()
         let speakerIDs = (SpeakerReviewPolicy.speakerIDs(in: meeting) + meeting.speakers)
             .filter { seen.insert($0).inserted }
-        let people = Dictionary(grouping: meeting.speakerReviewPeople ?? [], by: \.id)
         var entries: [WorkspaceParticipant] = []
         var indices: [String: Int] = [:]
 
         for speakerID in speakerIDs {
             let identity: String
             let isIdentified: Bool
-            if let personID = meeting.speakerReviewAssignments?[speakerID],
-               let matches = people[personID], matches.count == 1 {
-                identity = "person:\(personID.uuidString)"
-                isIdentified = true
-            } else if let suggestion = meeting.speakerSuggestions?[speakerID], suggestion.automatic {
-                identity = "profile:\(suggestion.profileID.uuidString)"
+            if let known = SpeakerReviewQueue.identifiedKey(for: speakerID, in: meeting) {
+                identity = known
                 isIdentified = true
             } else {
                 identity = "speaker:\(speakerID)"

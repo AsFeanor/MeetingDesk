@@ -75,7 +75,7 @@ struct OpenAIService {
             throw MeetingError.message("Transkript bölüm kimlikleri yineleniyor. Kaynak bağlantıları için transkripti düzeltin.")
         }
         let input = NotesInput(title: meeting.title,
-                               segments: meeting.segments.map { NotesInput.Segment(id: $0.id, speaker: meeting.speakerName($0.speaker),
+                               segments: TranscriptConversation.orderedSegments(meeting.segments).map { NotesInput.Segment(id: $0.id, speaker: meeting.speakerName($0.speaker),
                                                                                  start: $0.start, end: $0.end, text: $0.text) })
         let inputData: Data
         do { inputData = try JSONEncoder().encode(input) }

@@ -42,9 +42,8 @@ def main():
     command = ["swift", "test", "--skip-build", "--disable-sandbox", "--disable-keychain",
                "--cache-path", ".build/cache", "--scratch-path", ".build", "--filter",
                "WorkspaceVisualSnapshotTests.testRenderProductionWorkspaceInBothAppearancesAndWindowSizes"]
-    sources = [test_source, repo / "Sources/MeetingDesk/RootView.swift"]
-    sources += sorted((repo / "Sources/MeetingDesk").glob("*Theme*.swift"))
-    sources += sorted((repo / "Sources/MeetingDesk").glob("Workspace*.swift"))
+    sources = [test_source, repo / "Package.swift", repo / "Packaging/Info.plist"]
+    sources += sorted((repo / "Sources/MeetingDesk").glob("*.swift"))
     proof = {"sourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"],
               cwd=repo, text=True).strip(), "fixtureSHA256": sha(fixture),
              "sources": {str(p.relative_to(repo)): sha(p) for p in sources},

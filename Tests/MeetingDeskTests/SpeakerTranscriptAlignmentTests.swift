@@ -178,4 +178,103 @@ final class SpeakerTranscriptAlignmentTests: XCTestCase {
         XCTAssertNil(restored.segments[0].words)
         XCTAssertNil(restored.segments[0].audioSource)
     }
+    func testSplitMicrophoneUtteranceIsMergedChronologicallyWithInterleavedSystemSpeech() throws {
+        let micWords = [TranscriptWord(text: "Ben başlıyorum. ", start: 0, end: 2),
+                        TranscriptWord(text: "Sonra bitiriyorum.", start: 8, end: 10)]
+        let remoteWords = [TranscriptWord(text: "Araya girdim.", start: 3, end: 5)]
+        let microphone = TranscriptSegment(id: "local-microphone-1", speaker: "Mikrofon", start: 0, end: 10,
+            text: micWords.map(\.text).joined(), words: micWords, audioSource: .microphone)
+        let system = TranscriptSegment(id: "local-system-1", speaker: "Toplantı sesi", start: 3, end: 5,
+            text: remoteWords.map(\.text).joined(), words: remoteWords, audioSource: .system)
+        let turns = [turn("microphone:A", 0, 2, source: .microphone),
+                     turn("microphone:B", 8, 10, source: .microphone), turn("system:C", 3, 5)]
+
+        let result = try SpeakerTranscriptAlignment.assign([microphone, system], turns: turns)
+
+        XCTAssertEqual(result.map(\.start), [0, 3, 8])
+        XCTAssertEqual(result.map(\.end), [2, 5, 10])
+        XCTAssertEqual(result.map(\.speaker), ["microphone:A", "system:C", "microphone:B"])
+        XCTAssertEqual(result.map(\.audioSource), [.microphone, .system, .microphone])
+        XCTAssertEqual(result.map(\.text), ["Ben başlıyorum.", "Araya girdim.", "Sonra bitiriyorum."])
+        XCTAssertEqual(result.filter { $0.audioSource == .microphone }.flatMap { $0.words ?? [] }, micWords)
+        XCTAssertEqual(result.filter { $0.audioSource == .system }.flatMap { $0.words ?? [] }, remoteWords)
+        XCTAssertEqual(Set(result.map(\.id)).count, 3)
+        XCTAssertEqual(result, try SpeakerTranscriptAlignment.assign([microphone, system], turns: turns))
+    }
+
+    func testSortingAfterSplitKeepsBothSimultaneousSourcesInStableOrder() throws {
+        let micWords = [TranscriptWord(text: "Önce konuşuyorum. ", start: 0, end: 2),
+                        TranscriptWord(text: "Aynı anda.", start: 10, end: 12)]
+        let remoteWord = TranscriptWord(text: "Aynı anda.", start: 10, end: 11)
+        let microphone = TranscriptSegment(id: "local-microphone-1", speaker: "Mikrofon", start: 0, end: 12,
+            text: micWords.map(\.text).joined(), words: micWords, audioSource: .microphone)
+        let system = TranscriptSegment(id: "local-system-1", speaker: "Toplantı sesi", start: 10, end: 11,
+            text: remoteWord.text, words: [remoteWord], audioSource: .system)
+        let turns = [turn("microphone:A", 0, 2, source: .microphone),
+                     turn("microphone:B", 10, 12, source: .microphone), turn("system:C", 10, 11)]
+
+        let result = try SpeakerTranscriptAlignment.assign([microphone, system], turns: turns)
+
+        XCTAssertEqual(result.map(\.start), [0, 10, 10])
+        XCTAssertEqual(result.map(\.speaker), ["microphone:A", "microphone:B", "system:C"])
+        XCTAssertEqual(result.map(\.audioSource), [.microphone, .microphone, .system])
+        XCTAssertEqual(result.suffix(2).map(\.text), ["Aynı anda.", "Aynı anda."], "Simultaneous speech is not duplicate content merely because its words match")
+        XCTAssertEqual(result.flatMap { $0.words ?? [] }.count, 3)
+    }
+
+    func testZeroDurationFormattingBetweenOneVoiceDoesNotCreateAnUnknownCard() throws {
+        let words = [TranscriptWord(text: "Bunu ", start: 0, end: 1),
+                     TranscriptWord(text: "yapalım", start: 1, end: 2),
+                     TranscriptWord(text: ", ", start: 2, end: 2),
+                     TranscriptWord(text: "olur.", start: 2.1, end: 3)]
+        let original = segment(words, text: words.map(\.text).joined(), end: 3)
+
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: [turn("system:A", 0, 3)])
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.speaker, "system:A")
+        XCTAssertEqual(result.first?.text, original.text)
+        XCTAssertEqual(result.first?.words, words, "Formatting must keep its supplied timestamp and original text")
+        XCTAssertEqual(result.first?.start, 0)
+        XCTAssertEqual(result.first?.end, 3)
+    }
+
+    func testZeroDurationFormattingBetweenConflictingVoicesRemainsUnassigned() throws {
+        let words = [TranscriptWord(text: "Başladım", start: 0, end: 1),
+                     TranscriptWord(text: ", ", start: 1, end: 1),
+                     TranscriptWord(text: "bitirdim.", start: 1.1, end: 2)]
+        let original = segment(words, text: words.map(\.text).joined(), end: 2)
+
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: [turn("system:A", 0, 1), turn("system:B", 1.1, 2)])
+
+        XCTAssertEqual(result.map(\.speaker), ["system:A", "Toplantı sesi", "system:B"])
+        XCTAssertEqual(result.flatMap { $0.words ?? [] }, words)
+        XCTAssertEqual(result.map(\.text), ["Başladım", ",", "bitirdim."])
+    }
+
+    func testZeroDurationLexicalWordBetweenSameVoiceStillUsesCoverageRules() throws {
+        let words = [TranscriptWord(text: "Evet ", start: 0, end: 1),
+                     TranscriptWord(text: "hayır ", start: 1, end: 1),
+                     TranscriptWord(text: "bitti.", start: 1.1, end: 2)]
+        let original = segment(words, text: words.map(\.text).joined(), end: 2)
+
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: [turn("system:A", 0, 2)])
+
+        XCTAssertEqual(result.map(\.speaker), ["system:A", "Toplantı sesi", "system:A"])
+        XCTAssertEqual(result.flatMap { $0.words ?? [] }, words)
+        XCTAssertEqual(result[1].text, "hayır", "A lexical commitment/negation must never be smeared into a neighboring voice")
+    }
+
+    func testPositiveDurationFormattingIsNotAssignedByTheZeroDurationRule() throws {
+        let words = [TranscriptWord(text: "Başladım", start: 0, end: 1),
+                     TranscriptWord(text: ", ", start: 1, end: 1.2),
+                     TranscriptWord(text: "bitirdim.", start: 1.3, end: 2)]
+        let original = segment(words, text: words.map(\.text).joined(), end: 2)
+
+        let result = try SpeakerTranscriptAlignment.assign([original], turns: [turn("system:A", 0, 1), turn("system:A", 1.3, 2)])
+
+        XCTAssertEqual(result.map(\.speaker), ["system:A", "Toplantı sesi", "system:A"])
+        XCTAssertEqual(result.flatMap { $0.words ?? [] }, words)
+    }
+
 }
