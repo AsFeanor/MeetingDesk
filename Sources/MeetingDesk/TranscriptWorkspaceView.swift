@@ -22,26 +22,17 @@ struct TranscriptWorkspaceView: View {
     @State private var sourceFilter: TranscriptSourceFilter = .all
     @State private var flowing = true
     @State private var hideEchoes = true
-    @State private var projection: TranscriptEchoProjectionResult?
-    @State private var projectionRequest = UUID()
+    @StateObject private var presentation = TranscriptPresentationModel()
+    @State private var pendingFocusID: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var sources: Set<SpeakerAudioSource> { Set(meeting.segments.map(SpeakerTranscriptAlignment.source(for:))) }
-    private var displayMeeting: Meeting {
-        var value = meeting
-        let input = sourceFilter == .all && hideEchoes ? (projection?.segments ?? meeting.segments) : meeting.segments
-        value.segments = input.filter { sourceFilter.source == nil || SpeakerTranscriptAlignment.source(for: $0) == sourceFilter.source }
-        return value
+    private var snapshot: TranscriptPresentationSnapshot? {
+        presentation.matches(TranscriptPresentationInput(meeting: meeting)) ? presentation.snapshot : nil
     }
-    private var blocks: [TranscriptConversationBlock] {
-        let value = displayMeeting
-        let all = flowing ? TranscriptConversation.blocks(in: value) : TranscriptConversation.orderedSegments(value.segments).map { TranscriptConversationBlock(segments: [$0]) }
-        let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return all.filter { block in
-            clean.isEmpty || block.text.localizedStandardContains(clean) || block.segments.contains {
-                SpeakerPresentation.name(for: $0.speaker, in: meeting).localizedStandardContains(clean)
-            }
-        }
+    private var sources: Set<SpeakerAudioSource> { snapshot?.sources ?? [] }
+    private var request: TranscriptPresentationRequest {
+        TranscriptPresentationRequest(input: TranscriptPresentationInput(meeting: meeting),
+            grouping: .init(source: sourceFilter.source, flowing: flowing, hideEchoes: hideEchoes), query: query)
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -54,27 +45,27 @@ struct TranscriptWorkspaceView: View {
                                 .foregroundStyle(WorkspaceStyle.muted).padding(.vertical, 30)
                         } else {
                             MeetingSpeakerControls(store: store, meeting: meeting, onReview: onReviewSpeaker)
-                            if projection == nil {
+                            if snapshot == nil {
                                 HStack { ProgressView().controlSize(.small); Text("Konuşma görünümü hazırlanıyor…").font(.caption).foregroundStyle(WorkspaceStyle.muted) }
-                            } else if blocks.isEmpty {
+                            } else if presentation.rows.isEmpty {
                                 Label("Bu görünümde eşleşen konuşma yok.", systemImage: "text.magnifyingglass")
                                     .font(.callout).foregroundStyle(WorkspaceStyle.muted).padding(.vertical, 18)
                             } else {
-                                ForEach(blocks) { block in conversationCard(block).id(block.id) }
+                                ForEach(presentation.rows) { row in conversationCard(row).id(row.id) }
                             }
                         }
                     }.padding(28).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity, alignment: .center)
                 }
-                .onChange(of: focusedSegmentID) { _, _ in revealFocus(proxy) }
-                .onChange(of: projection?.hiddenSegmentIDs) { _, _ in if focusedSegmentID != nil { revealFocus(proxy) } }
-                .onAppear { revealFocus(proxy) }
+                .onChange(of: focusedSegmentID) { _, value in pendingFocusID = value; revealFocus(proxy) }
+                .onChange(of: presentation.revision) { _, _ in if pendingFocusID != nil { revealFocus(proxy) } }
+                .onAppear { pendingFocusID = focusedSegmentID; revealFocus(proxy) }
             }
         }
         .background(WorkspaceStyle.canvas)
         .foregroundStyle(WorkspaceStyle.ink)
         .tint(WorkspaceStyle.accent)
-        .task(id: meeting.id) { await prepareProjection() }
-        .onChange(of: meeting.segments) { _, _ in Task { await prepareProjection() } }
+        .task(id: request) { await presentation.update(request) }
+        .onDisappear { presentation.cancel() }
     }
 
     private var searchAndViewControls: some View {
@@ -100,22 +91,23 @@ struct TranscriptWorkspaceView: View {
                     Text("Akıcı").tag(true); Text("Parçalar").tag(false)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
                 Spacer(minLength: 0)
-                if projection?.hiddenSegmentIDs.isEmpty == false {
+                if snapshot?.hiddenSegmentIDs.isEmpty == false {
                     Toggle("Çift yazılanları gizle", isOn: $hideEchoes).toggleStyle(.checkbox)
                         .disabled(sourceFilter != .all).help("Yalnız Tüm sesler görünümünde yinelenen mikrofon metnini süzer. Özgün metin korunur.")
                 }
             }.font(.system(size: 11))
-            if let projection, !projection.hiddenSegmentIDs.isEmpty, hideEchoes && sourceFilter == .all {
-                Text("\(projection.hiddenSegmentIDs.count) çift mikrofon parçası bu görünümde gizli. Tüm parçalar ve ses kayıtları korunuyor.")
+            if let hidden = snapshot?.hiddenSegmentIDs, !hidden.isEmpty, hideEchoes && sourceFilter == .all {
+                Text("\(hidden.count) çift mikrofon parçası bu görünümde gizli. Tüm parçalar ve ses kayıtları korunuyor.")
                     .font(.system(size: 10)).foregroundStyle(WorkspaceStyle.muted)
             }
         }.padding(.horizontal, 28).padding(.top, 18)
     }
 
-    private func conversationCard(_ block: TranscriptConversationBlock) -> some View {
-        let editing = editingSegmentID.map(block.containsID) == true
-        let focused = focusedSegmentID.map(block.containsID) == true
-        let name = SpeakerPresentation.name(for: block.speaker, in: meeting)
+    private func conversationCard(_ row: TranscriptPresentationRow) -> some View {
+        let block = row.block
+        let editing = editingSegmentID.map(row.sourceIDs.contains) == true
+        let focused = focusedSegmentID.map(row.sourceIDs.contains) == true
+        let name = row.name
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 9) {
                 if !flowing { WorkspaceAvatar(name: name, size: 28) }
@@ -126,7 +118,7 @@ struct TranscriptWorkspaceView: View {
                 Button(timeLabel(block.start)) { store.seek(block.start) }.buttonStyle(.plain)
                     .foregroundStyle(WorkspaceStyle.accent).font(.system(size: 10).monospacedDigit())
                 Spacer(minLength: 0)
-                if (meeting.speakerTurns ?? []).contains(where: { $0.speakerID == block.speaker }) {
+                if row.canReview {
                     Button("Bu kim?") { onReviewSpeaker(block.speaker) }.font(.caption).disabled(store.workInProgress)
                 }
                 Button(editing ? "Bitti" : "Düzelt") { editingSegmentID = editing ? nil : block.id }
@@ -135,7 +127,7 @@ struct TranscriptWorkspaceView: View {
             if editing {
                 ForEach(block.segments) { segment in originalSegmentEditor(segment) }
             } else {
-                Text(block.text).font(.system(size: 14)).lineSpacing(6).textSelection(.enabled)
+                Text(row.text).font(.system(size: 14)).lineSpacing(6).textSelection(.enabled)
             }
         }.padding(.horizontal, flowing ? 4 : 18).padding(.vertical, flowing ? 8 : 18)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,21 +160,15 @@ struct TranscriptWorkspaceView: View {
         }.disabled(store.workInProgress)
     }
 
-    @MainActor private func prepareProjection() async {
-        let request = UUID(); projectionRequest = request
-        let segments = meeting.segments
-        let result = await Task.detached(priority: .userInitiated) { TranscriptEchoProjection.project(segments) }.value
-        guard !Task.isCancelled, projectionRequest == request,
-              store.meetings.first(where: { $0.id == meeting.id })?.segments == segments else { return }
-        projection = result
-    }
     private func revealFocus(_ proxy: ScrollViewProxy) {
-        guard let id = focusedSegmentID else { return }
+        guard let id = pendingFocusID, focusedSegmentID == id else { return }
         query = ""; sourceFilter = .all
-        if projection?.hiddenSegmentIDs.contains(id) == true { hideEchoes = false }
+        if snapshot?.hiddenSegmentIDs.contains(id) == true { hideEchoes = false }
         Task { @MainActor in
             await Task.yield()
-            guard let target = blocks.first(where: { $0.containsID(id) })?.id else { return }
+            guard pendingFocusID == id, focusedSegmentID == id, presentation.matches(request),
+                  let target = presentation.blockID(containing: id, input: TranscriptPresentationInput(meeting: meeting)) else { return }
+            pendingFocusID = nil
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { proxy.scrollTo(target, anchor: .center) }
         }
     }

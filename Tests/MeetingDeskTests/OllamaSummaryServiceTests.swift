@@ -23,6 +23,7 @@ final class OllamaSummaryServiceTests: XCTestCase {
         XCTAssertEqual(options["num_ctx"] as? Int, 65_536)
         XCTAssertEqual(options["num_predict"] as? Int, 4_096)
         XCTAssertEqual(options["temperature"] as? Double, 0.2)
+        XCTAssertEqual(options["num_thread"] as? Int, 4)
         let messages = try XCTUnwrap(requestBody["messages"] as? [[String: Any]])
         let user = try XCTUnwrap(messages.last?["content"] as? String)
         let sourceText = try XCTUnwrap(user.components(separatedBy: "SOURCES_JSON:\n").last)

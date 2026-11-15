@@ -228,7 +228,8 @@ final class MeetingDetector: ObservableObject {
 
     private func poll() {
         guard isRunning else { return }
-        candidate = policy.observe(sample(), at: now())
+        let observed = policy.observe(sample(), at: now())
+        if candidate != observed { candidate = observed }
     }
 
     deinit { timer?.invalidate() }

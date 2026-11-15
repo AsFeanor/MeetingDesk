@@ -214,7 +214,7 @@ final class OllamaSummaryService: @unchecked Sendable {
             "model": modelName, "stream": false, "think": false, "truncate": false, "shift": false,
             "messages": [["role": "system", "content": instructions], ["role": "user", "content": user]],
             "format": schema(template: meeting.template),
-            "options": ["num_ctx": 65_536, "num_predict": 4_096, "temperature": 0.2]
+            "options": ["num_ctx": 65_536, "num_predict": 4_096, "temperature": 0.2, "num_thread": 4]
         ])
     }
 

@@ -12,7 +12,9 @@ struct WorkspaceParticipant: Identifiable, Equatable {
 enum WorkspaceParticipants {
     static func entries(in meeting: Meeting) -> [WorkspaceParticipant] {
         var seen = Set<String>()
-        let speakerIDs = (SpeakerReviewPolicy.speakerIDs(in: meeting) + meeting.speakers)
+        let orderedSpeakerIDs = SpeakerReviewPolicy.speakerIDs(in: meeting)
+        let names = SpeakerPresentation.names(in: meeting, orderedSpeakerIDs: orderedSpeakerIDs)
+        let speakerIDs = (orderedSpeakerIDs + meeting.speakers)
             .filter { seen.insert($0).inserted }
         var entries: [WorkspaceParticipant] = []
         var indices: [String: Int] = [:]
@@ -32,7 +34,7 @@ enum WorkspaceParticipants {
             } else {
                 indices[identity] = entries.count
                 entries.append(WorkspaceParticipant(id: identity,
-                    name: SpeakerPresentation.name(for: speakerID, in: meeting), speakerIDs: [speakerID], isIdentified: isIdentified))
+                    name: names[speakerID] ?? speakerID, speakerIDs: [speakerID], isIdentified: isIdentified))
             }
         }
         return entries

@@ -23,8 +23,32 @@ enum SpeakerPresentation {
     }
 
     static func names(in meeting: Meeting) -> [String: String] {
-        let ids = Set(SpeakerReviewPolicy.speakerIDs(in: meeting)).union(meeting.speakers)
-        return Dictionary(uniqueKeysWithValues: ids.map { ($0, name(for: $0, in: meeting)) })
+        names(in: meeting, orderedSpeakerIDs: SpeakerReviewPolicy.speakerIDs(in: meeting))
+    }
+
+    /// Reuse the caller's first-speaking order rather than sorting the complete
+    /// transcript once again for every unresolved name.
+    static func names(in meeting: Meeting, orderedSpeakerIDs: [String]) -> [String: String] {
+        let ranks = Dictionary(uniqueKeysWithValues: orderedSpeakerIDs.enumerated().map { ($0.element, $0.offset + 1) })
+        let ids = Set(orderedSpeakerIDs).union(meeting.speakers)
+        var firstPeople: [UUID: SpeakerReviewPerson] = [:]
+        for person in meeting.speakerReviewPeople ?? [] where firstPeople[person.id] == nil {
+            firstPeople[person.id] = person
+        }
+        var result: [String: String] = [:]
+        for id in ids {
+            if let personID = meeting.speakerReviewAssignments?[id], let person = firstPeople[personID] {
+                result[id] = person.name
+            } else if let match = meeting.speakerSuggestions?[id], match.automatic {
+                result[id] = match.name
+            } else if let name = meeting.speakerNames[id]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !isFallbackName(name, speakerID: id) {
+                result[id] = name
+            } else if let rank = ranks[id] {
+                result[id] = "Ses \(rank)"
+            } else { result[id] = id }
+        }
+        return result
     }
 
     private static func isFallbackName(_ name: String, speakerID: String) -> Bool {
@@ -121,12 +145,10 @@ struct MeetingSpeakerControls: View {
     var onReview: (String?) -> Void
 
     private var unavailable: Bool { store.workInProgress || store.preparingSpeakerModels }
-    private var hasAudio: Bool { !store.playbackSources(for: meeting).isEmpty }
-    private var speakerIDs: [String] { SpeakerReviewPolicy.speakerIDs(in: meeting) }
-    private var hasVoices: Bool { !(meeting.speakerTurns ?? []).isEmpty && !speakerIDs.isEmpty }
-    private var people: [SpeakerReviewPerson] { meeting.speakerReviewPeople ?? [] }
-    private var namedPeopleCount: Int { SpeakerReviewQueue.identifiedGroups(in: meeting).count }
-    private var unnamedCount: Int { SpeakerReviewQueue.pendingSpeakerIDs(in: meeting).count }
+    @State private var hasAudio = false
+    @State private var hasVoices = false
+    @State private var namedPeopleCount = 0
+    @State private var unnamedCount = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -171,6 +193,13 @@ struct MeetingSpeakerControls: View {
             if !hasAudio && !hasVoices {
                 Text("Ses kaydı bulunmadığı için örnek dinlenemiyor.").font(.caption).foregroundStyle(.secondary)
             }
+        }
+        // These counts sort the transcript; playback clocks must not rebuild them.
+        .onChange(of: meeting, initial: true) { _, value in
+            hasAudio = !store.playbackSources(for: value).isEmpty
+            hasVoices = !(value.speakerTurns ?? []).isEmpty && !SpeakerReviewPolicy.speakerIDs(in: value).isEmpty
+            namedPeopleCount = SpeakerReviewQueue.identifiedGroups(in: value).count
+            unnamedCount = SpeakerReviewQueue.pendingSpeakerIDs(in: value).count
         }
         .confirmationDialog("Sesleri yeniden ayır?", isPresented: $showReanalysisConfirmation, titleVisibility: .visible) {
             Button("Yeniden ayır", role: .destructive) { store.identifySpeakers() }

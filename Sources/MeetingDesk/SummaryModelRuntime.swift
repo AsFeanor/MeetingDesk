@@ -50,6 +50,7 @@ final class SummaryModelRuntime: @unchecked Sendable {
         let process = Process()
         process.executableURL = executable
         process.arguments = ["serve"]
+        process.qualityOfService = .utility
         process.currentDirectoryURL = executable.deletingLastPathComponent()
         var environment = ProcessInfo.processInfo.environment
         environment["OLLAMA_HOST"] = "127.0.0.1:11471"

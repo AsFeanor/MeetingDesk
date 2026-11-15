@@ -13,33 +13,10 @@ struct WorkspaceSidebar: View {
     @State private var pendingOnly = false
     @State private var searchTerm = ""
     @State private var hoveredID: UUID?
+    @State private var archiveSnapshot = WorkspaceSidebarSnapshot.empty
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var selectionLocked: Bool { recorder.isRecording || store.hasPendingRecordingSession || store.showMicrophoneCheck }
-    private func pendingCount(_ meeting: Meeting) -> Int {
-        meeting.notes?.actions.filter { !meeting.completedActions.contains($0.id) }.count ?? 0
-    }
-    private var matches: [Meeting] {
-        store.meetings.filter { MeetingArchiveSearch.matches($0, query: searchTerm) && (!pendingOnly || pendingCount($0) > 0) }
-            .sorted { $0.createdAt > $1.createdAt }
-    }
-    private var groups: [ArchiveGroup] {
-        let calendar = Calendar.current, now = Date()
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: now) ?? now
-        let week = calendar.dateInterval(of: .weekOfYear, for: now)
-        let buckets = Dictionary(grouping: matches) { meeting -> Int in
-            if calendar.isDate(meeting.createdAt, inSameDayAs: now) { return 0 }
-            if calendar.isDate(meeting.createdAt, inSameDayAs: yesterday) { return 1 }
-            if week?.contains(meeting.createdAt) == true { return 2 }
-            return 3
-        }
-        let titles = ["Bugün", "Dün", "Bu hafta", "Önceki toplantılar"]
-        return titles.indices.compactMap { index in
-            guard let meetings = buckets[index], !meetings.isEmpty else { return nil }
-            return ArchiveGroup(id: index, title: titles[index], meetings: meetings)
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             brand.padding(.horizontal, 20).padding(.top, 25).padding(.bottom, 25)
@@ -53,7 +30,12 @@ struct WorkspaceSidebar: View {
                 if !query.isEmpty { try? await Task.sleep(for: .milliseconds(180)) }
                 guard !Task.isCancelled else { return }
                 searchTerm = query
+                rebuildArchiveSnapshot()
             }
+            .onChange(of: store.meetings) { _, _ in rebuildArchiveSnapshot() }
+            .onChange(of: store.voiceProfiles) { _, _ in rebuildArchiveSnapshot() }
+            .onChange(of: pendingOnly) { _, _ in rebuildArchiveSnapshot() }
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in rebuildArchiveSnapshot() }
     }
     private var brand: some View {
         HStack(spacing: 11) {
@@ -123,7 +105,7 @@ struct WorkspaceSidebar: View {
             HStack {
                 Text("TOPLANTILAR").font(.system(size: 9.5, weight: .semibold)).tracking(1.1)
                 Spacer()
-                Text("\(matches.count)").font(.system(size: 10, weight: .medium, design: .monospaced))
+                Text("\(archiveSnapshot.matchCount)").font(.system(size: 10, weight: .medium, design: .monospaced))
             }.foregroundStyle(WorkspaceStyle.muted)
             HStack(spacing: 5) {
                 scope("Tümü", selected: !pendingOnly) { pendingOnly = false }
@@ -145,9 +127,9 @@ struct WorkspaceSidebar: View {
     private var archiveList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 19) {
-                if groups.isEmpty { emptyArchive.padding(.horizontal, 12).padding(.top, 17) }
+                if archiveSnapshot.groups.isEmpty { emptyArchive.padding(.horizontal, 12).padding(.top, 17) }
                 else {
-                    ForEach(groups) { group in
+                    ForEach(archiveSnapshot.groups) { group in
                         VStack(alignment: .leading, spacing: 5) {
                             Text(group.title).font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(WorkspaceStyle.muted).padding(.horizontal, 12).padding(.bottom, 3)
@@ -158,15 +140,15 @@ struct WorkspaceSidebar: View {
             }.padding(.horizontal, 8).padding(.top, 7).padding(.bottom, 20)
         }.scrollIndicators(.hidden)
     }
-    private func row(_ meeting: Meeting) -> some View {
+    private func row(_ meeting: WorkspaceSidebarSnapshot.Row) -> some View {
         let selected = store.selectedID == meeting.id
         let recording = recorder.isRecording && store.recordingMeeting?.id == meeting.id
-        let remaining = pendingCount(meeting)
+        let remaining = meeting.pendingActionCount
         return Button {
             guard !selectionLocked else { return }; store.selectedID = meeting.id
         } label: {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: recording ? "record.circle.fill" : meeting.notes != nil ? "doc.text" : meeting.segments.isEmpty ? "waveform" : "text.alignleft")
+                Image(systemName: recording ? "record.circle.fill" : meeting.hasNotes ? "doc.text" : !meeting.hasTranscript ? "waveform" : "text.alignleft")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(recording ? WorkspaceStyle.recording : selected ? WorkspaceStyle.accent : WorkspaceStyle.muted)
                     .frame(width: 18).padding(.top, 2).accessibilityHidden(true)
@@ -219,7 +201,7 @@ struct WorkspaceSidebar: View {
             Button(action: onPeople) {
                 HStack(spacing: 10) {
                     Image(systemName: "person.2").frame(width: 18); Text("Kişiler"); Spacer()
-                    Text("\(PeopleDirectory.entries(meetings: store.meetings, profiles: store.voiceProfiles).count)")
+                    Text("\(archiveSnapshot.peopleCount)")
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                         .padding(.horizontal, 7).padding(.vertical, 3).background(WorkspaceStyle.canvas, in: Capsule())
                 }.font(.system(size: 12, weight: .medium))
@@ -243,9 +225,8 @@ struct WorkspaceSidebar: View {
             }.font(.system(size: 9)).foregroundStyle(WorkspaceStyle.muted)
         }.padding(.horizontal, 20).padding(.bottom, 18).padding(.top, 3)
     }
-    private struct ArchiveGroup: Identifiable {
-        let id: Int
-        let title: String
-        let meetings: [Meeting]
+    private func rebuildArchiveSnapshot() {
+        archiveSnapshot = WorkspaceSidebarSnapshot.build(meetings: store.meetings, profiles: store.voiceProfiles,
+            query: searchTerm, pendingOnly: pendingOnly)
     }
 }
