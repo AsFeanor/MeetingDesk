@@ -28,35 +28,39 @@ enum TranscriptConversation {
     }
 
     static func blocks(in meeting: Meeting) -> [TranscriptConversationBlock] {
-        // Older archives can contain chronology errors introduced when a source
-        // utterance was split. Repair display order without rewriting the archive.
-        let ordered = orderedSegments(meeting.segments)
+        let speakers = Set(meeting.segments.map(\.speaker))
+        let identities = Dictionary(uniqueKeysWithValues: speakers.map { id in
+            (id, SpeakerReviewQueue.identifiedKey(for: id, in: meeting).map { "known:" + $0 } ?? "voice:" + id)
+        })
+        return blocks(orderedSegments: orderedSegments(meeting.segments), identities: identities)
+    }
+
+    /// The presentation cache supplies already sorted segments and indexed
+    /// identities. End/validity are accumulated once, not rescanned per word.
+    static func blocks(orderedSegments: [TranscriptSegment], identities: [String: String]) -> [TranscriptConversationBlock] {
         var result: [TranscriptConversationBlock] = []
-        for segment in ordered {
-            if let last = result.last, canAppend(segment, to: last, meeting: meeting) {
+        var currentEnd = 0.0
+        var currentValid = false
+        var currentSource: SpeakerAudioSource = .mixed
+        var currentIdentity = ""
+        for segment in orderedSegments {
+            let valid = segment.start.isFinite && segment.end.isFinite && segment.start >= 0 && segment.end >= segment.start
+            let source = SpeakerTranscriptAlignment.source(for: segment)
+            let identity = identities[segment.speaker] ?? "voice:" + segment.speaker
+            if let first = result.last?.segments.first,
+               currentValid && valid, currentSource == source, currentIdentity == identity,
+               segment.start - currentEnd <= 1.5, max(currentEnd, segment.end) - first.start <= 30 {
                 result[result.count - 1].segments.append(segment)
+                currentEnd = max(currentEnd, segment.end)
             } else {
                 result.append(TranscriptConversationBlock(segments: [segment]))
+                currentEnd = segment.end
+                currentValid = valid
+                currentSource = source
+                currentIdentity = identity
             }
         }
         return result
-    }
-
-    private static func canAppend(_ segment: TranscriptSegment, to block: TranscriptConversationBlock, meeting: Meeting) -> Bool {
-        guard let first = block.segments.first,
-              first.start.isFinite, block.end.isFinite, first.start >= 0, block.end >= first.start,
-              segment.start.isFinite, segment.end.isFinite, segment.start >= 0, segment.end >= segment.start,
-              block.segments.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end >= $0.start }),
-              block.source == SpeakerTranscriptAlignment.source(for: segment),
-              identity(for: first.speaker, in: meeting) == identity(for: segment.speaker, in: meeting),
-              segment.start - block.end <= 1.5,
-              max(block.end, segment.end) - block.start <= 30 else { return false }
-        return true
-    }
-
-    private static func identity(for speakerID: String, in meeting: Meeting) -> String {
-        if let known = SpeakerReviewQueue.identifiedKey(for: speakerID, in: meeting) { return "known:" + known }
-        return "voice:" + speakerID
     }
 
     /// Only inserts a separator. No saved character is trimmed or replaced.

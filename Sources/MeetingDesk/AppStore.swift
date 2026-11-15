@@ -316,17 +316,22 @@ final class AppStore: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let player = self.player else { return }
-                self.playbackTime = player.currentTime
-                self.isPlaying = player.isPlaying
+                self.publishPlaybackProgress(time: player.currentTime, playing: player.isPlaying)
                 if let end = self.playbackEndTime, player.currentTime >= end {
                     if self.playingEvidenceID != nil { self.stopPlayback(); return }
                     player.pause()
-                    self.playbackTime = end
-                    self.isPlaying = false
+                    self.publishPlaybackProgress(time: end, playing: false)
                     self.playbackEndTime = nil; self.playingEvidenceID = nil
                 }
             }
         }
+    }
+
+    // A paused/finished player can remain owned for seeking or speaker review.
+    // Polling it must not invalidate the whole workspace with unchanged values.
+    func publishPlaybackProgress(time: Double, playing: Bool) {
+        if playbackTime != time { playbackTime = time }
+        if isPlaying != playing { isPlaying = playing }
     }
 
     deinit {

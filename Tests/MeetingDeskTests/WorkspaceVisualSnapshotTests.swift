@@ -9,7 +9,7 @@ import XCTest
 /// The external runner bounds this test process because AppKit rendering is synchronous.
 final class WorkspaceVisualSnapshotTests: XCTestCase {
     @MainActor
-    func testRenderProductionWorkspaceInBothAppearancesAndWindowSizes() throws {
+    func testRenderProductionWorkspaceInBothAppearancesAndWindowSizes() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard let destination = environment["MEETINGDESK_UI_SNAPSHOT_DIR"], !destination.isEmpty else {
             throw XCTSkip("Opt-in native visual QA. Set MEETINGDESK_UI_SNAPSHOT_DIR to an empty output directory.")
@@ -115,7 +115,7 @@ final class WorkspaceVisualSnapshotTests: XCTestCase {
                     hosting.wantsLayer = true
                     hosting.layoutSubtreeIfNeeded()
                     // No NSWindow is created or ordered, and no app event loop is started.
-                    RunLoop.main.run(until: Date().addingTimeInterval(0.12))
+                    try await Task.sleep(for: .milliseconds(250))
                     hosting.layoutSubtreeIfNeeded()
                     CATransaction.flush()
                     image = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil,
@@ -151,14 +151,14 @@ final class WorkspaceVisualSnapshotTests: XCTestCase {
             ]
             for (name, content, size) in variants {
                 let filename = "\(name)-\(appearance).png"
-                try renderAdditional(content.defaultAppStorage(defaults).environment(\.colorScheme, scheme),
+                try await renderAdditional(content.defaultAppStorage(defaults).environment(\.colorScheme, scheme),
                     size: size, scheme: scheme, path: output.appendingPathComponent(filename))
                 results.append(["file": filename, "width": Int(size.width), "height": Int(size.height), "appearance": appearance])
             }
             for (name, selected) in [("welcome", Optional<UUID>.none), ("new-meeting", fixture.meetings.first(where: { $0.segments.isEmpty && $0.audioFileName == nil && $0.notes == nil })?.id)] {
                 store.selectedID = selected
                 let filename = "\(name)-\(appearance)-900x620.png"
-                try renderAdditional(RootView(store: store, recorder: store.recorder).defaultAppStorage(defaults)
+                try await renderAdditional(RootView(store: store, recorder: store.recorder).defaultAppStorage(defaults)
                     .environment(\.colorScheme, scheme), size: NSSize(width: 900, height: 620), scheme: scheme,
                     path: output.appendingPathComponent(filename))
                 results.append(["file": filename, "width": 900, "height": 620, "appearance": appearance])
@@ -196,7 +196,7 @@ final class WorkspaceVisualSnapshotTests: XCTestCase {
             defaults.set(appearance, forKey: WorkspaceAppearance.defaultsKey)
             let content = TranscriptWorkspaceView(store: conversationStore, meeting: conversation, query: .constant(""), focusedSegmentID: .constant(nil), editingSegmentID: .constant(nil), onReviewSpeaker: { _ in })
             let filename = "transcript-\(appearance)-900x620.png"
-            try renderAdditional(content.defaultAppStorage(defaults).environment(\.colorScheme, scheme),
+            try await renderAdditional(content.defaultAppStorage(defaults).environment(\.colorScheme, scheme),
                 size: NSSize(width: 900, height: 620), scheme: scheme, path: output.appendingPathComponent(filename))
             results.append(["file": filename, "width": 900, "height": 620, "appearance": appearance])
         }
@@ -220,14 +220,14 @@ final class WorkspaceVisualSnapshotTests: XCTestCase {
     }
 
     @MainActor
-    private func renderAdditional<Content: View>(_ content: Content, size: NSSize, scheme: ColorScheme, path: URL) throws {
+    private func renderAdditional<Content: View>(_ content: Content, size: NSSize, scheme: ColorScheme, path: URL) async throws {
         let hosting = NSHostingView(rootView: content.preferredColorScheme(scheme).frame(width: size.width, height: size.height)
             .transaction { $0.animation = nil; $0.disablesAnimations = true })
         hosting.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
         hosting.frame = NSRect(origin: .zero, size: size)
         hosting.wantsLayer = true
         hosting.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.12))
+        try await Task.sleep(for: .milliseconds(250))
         hosting.layoutSubtreeIfNeeded()
         CATransaction.flush()
         let image = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width), pixelsHigh: Int(size.height),

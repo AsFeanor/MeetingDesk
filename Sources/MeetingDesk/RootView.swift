@@ -29,6 +29,7 @@ struct RootView: View {
     @State private var transcriptQuery = ""
     @State private var pendingActionsOnly = false
     @State private var sectionFocus: String?
+    @State private var detailSnapshot = WorkspaceDetailSnapshot.empty
     @Namespace private var tabHighlight
     @AppStorage(WorkspaceAppearance.defaultsKey) private var appearanceRaw = WorkspaceAppearance.system.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -119,6 +120,9 @@ struct RootView: View {
         .alert("İşlem tamamlanamadı", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button("Tamam") { store.errorMessage = nil }
         } message: { Text(store.errorMessage ?? "") }
+        .onChange(of: store.selected, initial: true) { _, meeting in
+            rebuildDetailSnapshot(meeting)
+        }
         .onChange(of: store.selectedID) { _, _ in
             store.stopPlayback(); store.playbackSource = .mixed; focusID = nil; editSegment = nil
             reviewingSpeaker = nil; transcriptQuery = ""; sectionFocus = nil
@@ -172,7 +176,7 @@ struct RootView: View {
 
     private func inspector(_ meeting: Meeting) -> some View {
         let presentation = MeetingNotesPresentation(meeting: meeting)
-        let participants = WorkspaceParticipants.entries(in: meeting)
+        let participants = detailSnapshot.meetingID == meeting.id ? detailSnapshot.participants : []
         return ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 14) {
@@ -277,8 +281,8 @@ struct RootView: View {
     }
 
     private func detail(_ meeting: Meeting) -> some View {
-        let participants = WorkspaceParticipants.entries(in: meeting)
-        let identified = participants.filter(\.isIdentified).count
+        let participants = detailSnapshot.meetingID == meeting.id ? detailSnapshot.participants : []
+        let identified = detailSnapshot.meetingID == meeting.id ? detailSnapshot.identifiedParticipantCount : 0
         return VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 15) {
                 HStack(alignment: .top, spacing: 18) {
@@ -641,14 +645,15 @@ struct RootView: View {
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(WorkspaceStyle.border.opacity(0.65)))
     }
     private func evidenceButtons(_ ids: [String], meeting: Meeting) -> some View {
-        let excerpts = store.availableEvidenceExcerpts(in: meeting, evidence: ids)
+        let snapshot = detailSnapshot.meetingID == meeting.id ? detailSnapshot : .empty
+        let excerpts = snapshot.excerpts(for: ids)
         return HStack(spacing: 8) {
             if ids.isEmpty {
                 Text("Elle eklendi · kaynak bağlantısı yok").font(.system(size: 10)).foregroundStyle(WorkspaceStyle.muted)
             } else {
                 Image(systemName: "link").font(.system(size: 9)).foregroundStyle(WorkspaceStyle.muted)
                 ForEach(Array(ids.prefix(3)), id: \.self) { id in
-                    if let segment = meeting.segments.first(where: { $0.id == id }) {
+                    if let segment = snapshot.segmentsByID[id] {
                         Button(timeLabel(segment.start)) { openSource(segment) }
                             .buttonStyle(.plain).font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(WorkspaceStyle.accent).padding(.horizontal, 7).padding(.vertical, 3)
@@ -659,7 +664,7 @@ struct RootView: View {
                 if ids.count > 3 {
                     Menu {
                         ForEach(Array(ids.dropFirst(3)), id: \.self) { id in
-                            if let segment = meeting.segments.first(where: { $0.id == id }) {
+                            if let segment = snapshot.segmentsByID[id] {
                                 Button("\(timeLabel(segment.start)) · \(segment.text.prefix(70))") { openSource(segment) }
                             }
                         }
@@ -682,11 +687,19 @@ struct RootView: View {
                         .menuStyle(.borderlessButton).fixedSize().disabled(store.workInProgress).help("Diğer ilgili ses parçaları")
                 }
             }
-            if ids.contains(where: { id in !meeting.segments.contains { $0.id == id } }) {
+            if ids.contains(where: { snapshot.segmentsByID[$0] == nil }) {
                 Image(systemName: "exclamationmark.triangle").foregroundStyle(WorkspaceStyle.recording)
                     .help("Önceki döküme ait kaynak · kontrol et").accessibilityLabel("Önceki döküme ait kaynak; kontrol et")
             }
             Spacer(minLength: 0)
+        }
+    }
+
+    private func rebuildDetailSnapshot(_ meeting: Meeting?) {
+        guard let meeting else { detailSnapshot = .empty; return }
+        detailSnapshot = WorkspaceDetailSnapshot.build(meeting: meeting) { source in
+            guard let url = store.library.audioURL(for: meeting, source: source) else { return false }
+            return FileManager.default.fileExists(atPath: url.path)
         }
     }
 
