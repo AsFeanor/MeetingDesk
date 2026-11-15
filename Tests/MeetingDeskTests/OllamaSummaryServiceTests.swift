@@ -50,6 +50,16 @@ final class OllamaSummaryServiceTests: XCTestCase {
             .init(id: "early", speaker: "b", start: 0, end: 3, text: "First."),
             .init(id: "same-time", speaker: "c", start: 0, end: 2, text: "Second, simultaneous.")
         ]
+        let original = meeting
+        let request = try OllamaSummaryService.chatRequest(meeting: meeting)
+        let body = try object(XCTUnwrap(request.httpBody))
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let user = try XCTUnwrap(messages.last?["content"] as? String)
+        let sourceText = try XCTUnwrap(user.components(separatedBy: "SOURCES_JSON:\n").last)
+        let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(sourceText.utf8)) as? [[String: Any]])
+        XCTAssertEqual(rows.compactMap { $0["id"] as? String }, ["s1", "s2", "s3"])
+        XCTAssertEqual(rows.compactMap { $0["text"] as? String }, ["First.", "Second, simultaneous.", "Later."])
+        XCTAssertEqual(meeting, original)
         var wire = validWire()
         wire["decisions"] = [["text": "Agreed outcome.", "evidence": ["s1", "s3"]]]
         let result = try OllamaSummaryService.notes(from: envelope(wire), meeting: meeting)

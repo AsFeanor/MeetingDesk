@@ -110,6 +110,7 @@ struct Meeting: Codable, Identifiable, Equatable {
     var speakerRecognitionNotice: String?
     var speakerReviewPeople: [SpeakerReviewPerson]?
     var speakerReviewAssignments: [String: UUID]?
+    var previousMeetingID: UUID?
 
     func speakerName(_ id: String) -> String { speakerNames[id] ?? id }
     var speakers: [String] { Array(Set(segments.map(\.speaker))).sorted() }

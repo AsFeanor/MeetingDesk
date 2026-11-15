@@ -67,10 +67,16 @@ final class OpenAIServiceTests: XCTestCase {
             XCTAssertTrue(system.contains("Turkish"))
             let input = try XCTUnwrap(messages.last?["content"]?.data(using: .utf8))
             let source = try XCTUnwrap(JSONSerialization.jsonObject(with: input) as? [String: Any])
-            XCTAssertEqual((source["segments"] as? [[String: Any]])?.count, 2)
+            let segments = try XCTUnwrap(source["segments"] as? [[String: Any]])
+            XCTAssertEqual(segments.count, 2)
+            XCTAssertEqual(segments.compactMap { $0["id"] as? String }, ["seg-a", "seg-b"], "Old unsorted archives must reach the model in chronological order")
             return (200, try Self.completion(expected))
         }
-        let result = try await OpenAIService(apiKey: "test-key", session: session).summarize(meeting: Self.meeting)
+        var unsorted = Self.meeting
+        unsorted.segments.reverse()
+        let original = unsorted
+        let result = try await OpenAIService(apiKey: "test-key", session: session).summarize(meeting: unsorted)
+        XCTAssertEqual(unsorted, original)
         XCTAssertEqual(result, expected)
         XCTAssertNil(result.actions[0].owner)
         XCTAssertNil(result.actions[0].due)

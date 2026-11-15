@@ -156,4 +156,37 @@ final class SharingExportTests: XCTestCase {
         meeting.completedActions = ["a1"]
         return meeting
     }
+    func testUnsortedLegacyTranscriptHasConsistentChronologyAcrossAllSharingFormats() throws {
+        var meeting = fixture()
+        let early = TranscriptSegment(id: "early-anchor", speaker: "A", start: 0, end: 2, text: "EARLY UNIQUE CONTENT")
+        let late = TranscriptSegment(id: "late-anchor", speaker: "B", start: 8, end: 10, text: "LATE UNIQUE CONTENT")
+        let middle = TranscriptSegment(id: "middle-anchor", speaker: "A", start: 3, end: 5, text: "MIDDLE UNIQUE CONTENT")
+        meeting.segments = [early, late, middle]
+        meeting.notes?.decisions[0].evidence = [late.id]
+        let original = meeting
+        let expectedText = [early.text, middle.text, late.text]
+
+        let document = MeetingExport.document(meeting, options: MeetingShareOptions(scope: .fullTranscript))
+
+        XCTAssertEqual(document.blocks.filter { $0.kind == .transcriptHeading }.map(\.text), ["00:00 · A", "00:03 · A", "00:08 · B"])
+        XCTAssertEqual(document.blocks.filter { $0.kind == .paragraph && expectedText.contains($0.text) }.map(\.text), expectedText)
+        XCTAssertEqual(document.blocks.filter { $0.kind == .anchor }.count, 3)
+        XCTAssertTrue(document.markdown.contains("[00:08](#late-anchor)"), "Evidence links must still resolve the original saved ID")
+        for (first, second) in zip([early.id, middle.id], [middle.id, late.id]) {
+            let a = try XCTUnwrap(document.markdown.range(of: "<a id=\"\(first)\"></a>"))
+            let b = try XCTUnwrap(document.markdown.range(of: "<a id=\"\(second)\"></a>"))
+            XCTAssertLessThan(a.lowerBound, b.lowerBound)
+        }
+        let notion = NotionExportPlan(document: document)
+        XCTAssertEqual(notion.transcript.filter { !$0.bold }.flatMap(\.text), expectedText)
+        let pdf = try XCTUnwrap(PDFDocument(data: MeetingPDFExport.data(document: document, title: meeting.title)))
+        let extracted = try XCTUnwrap(pdf.string)
+        for output in [document.plainText, document.markdown, extracted] {
+            let a = try XCTUnwrap(output.range(of: early.text)), b = try XCTUnwrap(output.range(of: middle.text)), c = try XCTUnwrap(output.range(of: late.text))
+            XCTAssertLessThan(a.lowerBound, b.lowerBound)
+            XCTAssertLessThan(b.lowerBound, c.lowerBound)
+        }
+        XCTAssertEqual(meeting, original, "Generating an export must not rewrite the archive or existing notes")
+    }
+
 }

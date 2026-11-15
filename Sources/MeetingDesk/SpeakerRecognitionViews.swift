@@ -125,17 +125,8 @@ struct MeetingSpeakerControls: View {
     private var speakerIDs: [String] { SpeakerReviewPolicy.speakerIDs(in: meeting) }
     private var hasVoices: Bool { !(meeting.speakerTurns ?? []).isEmpty && !speakerIDs.isEmpty }
     private var people: [SpeakerReviewPerson] { meeting.speakerReviewPeople ?? [] }
-    private var namedPeopleCount: Int {
-        let valid = Set(people.map(\.id))
-        return Set(speakerIDs.compactMap { meeting.speakerReviewAssignments?[$0] }.filter { valid.contains($0) }).count
-    }
-    private var unnamedCount: Int {
-        let valid = Set(people.map(\.id))
-        return speakerIDs.filter { id in
-            guard let person = meeting.speakerReviewAssignments?[id] else { return true }
-            return !valid.contains(person)
-        }.count
-    }
+    private var namedPeopleCount: Int { SpeakerReviewQueue.identifiedGroups(in: meeting).count }
+    private var unnamedCount: Int { SpeakerReviewQueue.pendingSpeakerIDs(in: meeting).count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -143,7 +134,7 @@ struct MeetingSpeakerControls: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Label("Konuşmacılar", systemImage: "person.2.wave.2").font(.headline)
                     if hasVoices {
-                        Text(namedPeopleCount == 0 ? "\(speakerIDs.count) kısa örneği dinleyip isimleri kontrol et." : (unnamedCount == 0 ? "\(namedPeopleCount) kişi seçildi" : "\(namedPeopleCount) kişi seçildi · \(unnamedCount) örnek kaldı"))
+                        Text(namedPeopleCount == 0 ? "\(unnamedCount) kısa örneği dinleyip isimleri kontrol et." : (unnamedCount == 0 ? "\(namedPeopleCount) kişi eşleşti · tekrar seçim gerekmiyor" : "\(namedPeopleCount) kişi eşleşti · \(unnamedCount) örnek kaldı"))
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text("Kısa örnekleri dinleyip kimin konuştuğunu seç.").font(.caption).foregroundStyle(.secondary)
@@ -151,7 +142,7 @@ struct MeetingSpeakerControls: View {
                 }
                 Spacer(minLength: 8)
                 if hasVoices {
-                    Button("Konuşmacıları düzenle") { onReview(nil) }
+                    Button(unnamedCount > 0 ? "Kalan sesleri seç" : "Konuşmacıları düzenle") { onReview(nil) }
                         .buttonStyle(.borderedProminent).disabled(unavailable)
                         .accessibilityHint("Ses örneklerini tek tek dinleyip kişi seçme ekranını açar")
                     Menu {

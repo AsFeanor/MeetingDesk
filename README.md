@@ -4,7 +4,19 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-**0.8.0 / yapı 20** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+**0.9.0 / yapı 21** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+
+## Önceki işler ve kaynak sesleri
+
+Toplantı notundaki **Önceki toplantıdan → Toplantı seç** ile ilgili önceki görüşmeyi bağlayın. Aynı başlıkta bir toplantı varsa öneri gösterilir; otomatik olarak ilgisiz işler bağlanmaz. **Kalan işler** listesinden tamamladığınız madde kendi özgün toplantısında işaretlenir. Daha eski açık işler, yalnız açıkça bağladığınız görüşme zincirinden gelir.
+
+Kaynak bağlantısı olan karar, aksiyon veya konu metnine ya da yanındaki **Dinle** düğmesine tıklayarak 12 saniyeye kadar ilgili sesi dinleyebilirsiniz. Doğru mikrofon/sistem kaydı seçilir ve parça sonunda durur. Diğer kaynaklar açılır menüdedir. Silinmiş veya hiç kaydedilmemiş sesler için metin kaynağı kullanılmaya devam eder.
+
+Transkriptte **Akıcı / Parçalar** ve **Tüm sesler / Mikrofon / Toplantı sesi** görünümleri bulunur. **Çift yazılanları gizle**, yalnız zamanları eşleşen uzun ve birebir kelime dizileriyle tamamen doğrulanan mikrofon tekrarlarını okuma görünümünden süzer. Özgün transkript, kelime zamanları, sesler ve kaynak kimlikleri korunur; kontrolü kapatarak tüm parçaları görebilirsiniz. Dışa aktarım tam metni zaman sırasıyla korur. Bu görünüm bir ses temizleyici veya yeni kelime tanıma modeli değildir.
+
+Konuşmacı kontrolü artık yalnız belirsiz gruplarla başlar. Bilinen kişileri yeniden düzenlemek için **Bu kim?** veya tüm sesleri gözden geçirme seçeneği kullanılabilir. Son seçtiğiniz kişiye ait başka bir sesi dinledikten sonra tek düğmeyle aynı kişiyi onaylayabilirsiniz; bilinmeyen sesler adlarına göre otomatik birleştirilmez.
+
+![Akıcı transkript · sentetik örnek](docs/images/transcript-flow-light.png)
 
 ## Yeni çalışma alanı
 

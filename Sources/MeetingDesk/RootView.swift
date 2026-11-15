@@ -506,6 +506,7 @@ struct RootView: View {
                         if let message = presentation.templateChangeMessage {
                             Label(message, systemImage: "rectangle.3.group").font(.system(size: 12)).foregroundStyle(WorkspaceStyle.recording)
                         }
+                        carryover(meeting)
                         ForEach(presentation.sections) { section in
                             VStack(alignment: .leading, spacing: 16) {
                                 overviewSection(section, notes: notes, meeting: meeting)
@@ -534,6 +535,7 @@ struct RootView: View {
                             }
                         }.padding(.vertical, 36)
                     }
+                    if meeting.notes == nil { carryover(meeting) }
                 }.padding(32).frame(maxWidth: 800, alignment: .leading).frame(maxWidth: .infinity, alignment: .center)
             }
             .onChange(of: sectionFocus) { _, id in
@@ -542,6 +544,20 @@ struct RootView: View {
             }
             .onAppear { if let sectionFocus { proxy.scrollTo(sectionFocus, anchor: .top) } }
         }
+    }
+
+    private func carryover(_ meeting: Meeting) -> some View {
+        CarryoverActionsView(meeting: meeting, meetings: store.meetings,
+            previousMeetingID: meeting.previousMeetingID, previousLinks: store.previousMeetingLinks,
+            canEdit: store.canEditCarryover,
+            canNavigate: !recorder.isRecording && !store.hasPendingRecordingSession && !store.showMicrophoneCheck,
+            onSelectPrevious: { store.setPreviousMeeting($0, for: meeting.id) },
+            onOpenMeeting: { id in
+                guard !recorder.isRecording, !store.hasPendingRecordingSession, !store.showMicrophoneCheck else { return }
+                store.selectedID = id; tab = .overview
+            },
+            onCompleteAction: { store.completeCarryoverAction(sourceMeetingID: $0, actionID: $1, in: meeting.id) })
+            .id(meeting.id)
     }
 
     @ViewBuilder
@@ -574,6 +590,7 @@ struct RootView: View {
                         .accessibilityLabel("Tamamlandı: \(action.text)")
                     VStack(alignment: .leading, spacing: 8) {
                         Text(action.text).strikethrough(meeting.completedActions.contains(action.id)).textSelection(.enabled)
+                            .onTapGesture { playFirstEvidence(action.evidence, in: meeting) }
                         Text("Sorumlu: \(action.owner ?? "Belirtilmedi") · Tarih: \(action.due ?? "Belirtilmedi")").font(.caption).foregroundStyle(.secondary)
                         evidenceButtons(action.evidence, meeting: meeting)
                     }
@@ -597,6 +614,7 @@ struct RootView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(topic.title).font(.headline)
                     Text(topic.text).font(.system(size: 14)).lineSpacing(5).textSelection(.enabled)
+                        .onTapGesture { playFirstEvidence(topic.evidence, in: meeting) }
                     evidenceButtons(topic.evidence, meeting: meeting)
                 }
             }
@@ -604,74 +622,10 @@ struct RootView: View {
     }
 
     private func transcript(_ meeting: Meeting) -> some View {
-        let reviewSpeakerIDs = Set(SpeakerReviewPolicy.speakerIDs(in: meeting))
-            .intersection(Set((meeting.speakerTurns ?? []).map(\.speakerID)))
-        let displayNames = SpeakerPresentation.names(in: meeting)
-        let visibleSegments = meeting.segments.filter {
-            transcriptQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-            $0.text.localizedStandardContains(transcriptQuery) || (displayNames[$0.speaker] ?? $0.speaker).localizedStandardContains(transcriptQuery)
-        }
-        return VStack(spacing: 0) {
-            if !meeting.segments.isEmpty {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(WorkspaceStyle.muted)
-                    TextField("Bu transkriptte ara…", text: $transcriptQuery).textFieldStyle(.plain)
-                        .accessibilityLabel("Transkriptte metin veya konuşmacı ara")
-                    Text("\(visibleSegments.count) bölüm").font(.system(size: 10)).foregroundStyle(WorkspaceStyle.muted)
-                    if !transcriptQuery.isEmpty {
-                        Button { transcriptQuery = "" } label: { Image(systemName: "xmark.circle.fill") }
-                            .buttonStyle(.plain).accessibilityLabel("Transkript aramasını temizle")
-                    }
-                }.font(.system(size: 12)).padding(12).background(WorkspaceStyle.surface, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(WorkspaceStyle.border)).padding(.horizontal, 28).padding(.top, 18)
-            }
-            ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
-                    if meeting.segments.isEmpty {
-                        Text(recorder.isRecording ? "Transkript, kayıt bittikten sonra hazırlanır." : "Henüz transkript yok.").foregroundStyle(.secondary).padding(.vertical, 30)
-                    } else {
-                        MeetingSpeakerControls(store: store, meeting: meeting) { speakerID in
-                            reviewingSpeaker = SpeakerReviewRequest(meetingID: meeting.id, initialSpeakerID: speakerID)
-                        }
-                        if visibleSegments.isEmpty {
-                            Label("Bu aramayla eşleşen konuşma bulunamadı.", systemImage: "text.magnifyingglass")
-                                .font(.callout).foregroundStyle(WorkspaceStyle.muted).padding(.vertical, 18)
-                        }
-                        ForEach(visibleSegments) { segment in
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack {
-                                    WorkspaceAvatar(name: displayNames[segment.speaker] ?? segment.speaker, size: 28)
-                                    Text(displayNames[segment.speaker] ?? segment.speaker).font(.callout.weight(.semibold))
-                                    Button(timeLabel(segment.start)) { store.seek(segment.start) }.buttonStyle(.plain).foregroundStyle(.tint).font(.caption.monospacedDigit())
-                                    Spacer()
-                                    if reviewSpeakerIDs.contains(segment.speaker) {
-                                        Button("Bu kim?") {
-                                            reviewingSpeaker = SpeakerReviewRequest(meetingID: meeting.id, initialSpeakerID: segment.speaker)
-                                        }.font(.caption).disabled(store.workInProgress)
-                                    }
-                                    Button(editSegment == segment.id ? "Bitti" : "Düzelt") { editSegment = editSegment == segment.id ? nil : segment.id }.font(.caption).disabled(store.isBusy)
-                                }
-                                if editSegment == segment.id {
-                                    if meeting.speakerRecognitionEngine != nil {
-                                        SpeakerAssignmentPicker(store: store, meeting: meeting, segment: segment)
-                                    } else if meeting.transcriptionEngine == ProcessingMode.local.rawValue {
-                                        TextField("Bu bölümün konuşmacısı (isteğe bağlı)", text: Binding(get: { store.meetings.first { $0.id == meeting.id }?.segments.first { $0.id == segment.id }?.speaker ?? segment.speaker }, set: { store.nameLocalSpeaker(meetingID: meeting.id, segmentID: segment.id, name: $0) })).textFieldStyle(.roundedBorder).disabled(store.workInProgress)
-                                    }
-                                    TextEditor(text: Binding(get: { store.meetings.first { $0.id == meeting.id }?.segments.first { $0.id == segment.id }?.text ?? segment.text }, set: { value in store.update(meeting.id) { item in if let index = item.segments.firstIndex(where: { $0.id == segment.id }) { item.segments[index].text = value; item.notesNeedRefresh = item.notes != nil } } }))
-                                        .frame(minHeight: 90).font(.body).disabled(store.workInProgress)
-                                } else { Text(segment.text).lineSpacing(4).textSelection(.enabled) }
-                            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                                .background(focusID == segment.id ? WorkspaceStyle.accent.opacity(0.08) : WorkspaceStyle.surface, in: RoundedRectangle(cornerRadius: 10))
-                                .id(segment.id)
-                        }
-                    }
-                }.padding(28).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .onChange(of: focusID) { _, id in if let id { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) } } }
-            .onAppear { if let focusID { proxy.scrollTo(focusID, anchor: .center) } }
-        }
-        }
+        TranscriptWorkspaceView(store: store, meeting: meeting, query: $transcriptQuery,
+            focusedSegmentID: $focusID, editingSegmentID: $editSegment,
+            onReviewSpeaker: { reviewingSpeaker = SpeakerReviewRequest(meetingID: meeting.id, initialSpeakerID: $0) })
+            .id(meeting.id)
     }
 
     private func sectionTitle(_ title: String, icon: String) -> some View {
@@ -680,12 +634,15 @@ struct RootView: View {
     private func itemRow(_ text: String, evidence: [String], meeting: Meeting) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(text).lineSpacing(4).textSelection(.enabled)
+                .onTapGesture { playFirstEvidence(evidence, in: meeting) }
+                .help("Kayıt varsa ilgili kısa sesi dinle; kayıt yoksa metin kaynağını aç.")
             evidenceButtons(evidence, meeting: meeting)
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(WorkspaceStyle.surface, in: RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(WorkspaceStyle.border.opacity(0.65)))
     }
     private func evidenceButtons(_ ids: [String], meeting: Meeting) -> some View {
-        HStack(spacing: 8) {
+        let excerpts = store.availableEvidenceExcerpts(in: meeting, evidence: ids)
+        return HStack(spacing: 8) {
             if ids.isEmpty {
                 Text("Elle eklendi · kaynak bağlantısı yok").font(.system(size: 10)).foregroundStyle(WorkspaceStyle.muted)
             } else {
@@ -710,12 +667,34 @@ struct RootView: View {
                         .menuStyle(.borderlessButton).fixedSize()
                 }
             }
+            if let excerpt = excerpts.first {
+                Button { store.playEvidenceExcerpt(excerpt, meetingID: meeting.id) } label: {
+                    Label(store.isPlaying && store.playingEvidenceID == excerpt.id ? "Durdur" : "Dinle", systemImage: store.isPlaying && store.playingEvidenceID == excerpt.id ? "stop.fill" : "play.fill")
+                        .font(.system(size: 10, weight: .medium))
+                }.buttonStyle(.plain).foregroundStyle(WorkspaceStyle.accent).disabled(store.workInProgress)
+                    .help("\(excerpt.playbackSource.label) · \(Int(ceil(excerpt.duration))) saniye; parça sonunda kendiliğinden durur")
+                if excerpts.count > 1 {
+                    Menu {
+                        ForEach(Array(excerpts.dropFirst())) { item in
+                            Button("\(timeLabel(item.start)) · \(item.playbackSource.label)") { store.playEvidenceExcerpt(item, meetingID: meeting.id) }
+                        }
+                    } label: { Image(systemName: "ellipsis").font(.system(size: 9)) }
+                        .menuStyle(.borderlessButton).fixedSize().disabled(store.workInProgress).help("Diğer ilgili ses parçaları")
+                }
+            }
             if ids.contains(where: { id in !meeting.segments.contains { $0.id == id } }) {
                 Image(systemName: "exclamationmark.triangle").foregroundStyle(WorkspaceStyle.recording)
                     .help("Önceki döküme ait kaynak · kontrol et").accessibilityLabel("Önceki döküme ait kaynak; kontrol et")
             }
             Spacer(minLength: 0)
         }
+    }
+
+    private func playFirstEvidence(_ ids: [String], in meeting: Meeting) {
+        guard !store.workInProgress else { return }
+        if let excerpt = store.availableEvidenceExcerpts(in: meeting, evidence: ids).first {
+            store.playEvidenceExcerpt(excerpt, meetingID: meeting.id)
+        } else if let segment = meeting.segments.first(where: { ids.contains($0.id) }) { openSource(segment) }
     }
 
     private func openSource(_ segment: TranscriptSegment) {

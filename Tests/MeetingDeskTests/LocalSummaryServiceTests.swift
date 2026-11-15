@@ -159,4 +159,20 @@ final class LocalSummaryServiceTests: XCTestCase {
     private func blankNotes() -> MeetingNotes {
         MeetingNotes(summary: "Design revision discussed.", decisions: [], actions: [], questions: [], ideas: [], topics: [])
     }
+    func testUnsortedLegacySourcesAreChunkedChronologicallyWithoutLosingAnyFragmentOrID() throws {
+        let late = TranscriptSegment(id: "late", speaker: "A", start: 8, end: 10, text: "Sonraki kaynak.")
+        let early = TranscriptSegment(id: "early", speaker: "B", start: 0, end: 2, text: "İlk kaynak.")
+        let simultaneous = TranscriptSegment(id: "simultaneous", speaker: "C", start: 0, end: 1, text: "Aynı anda ikinci kaynak.")
+        let meeting = Meeting(title: "Sentetik", segments: [late, early, simultaneous])
+        let original = meeting
+
+        let sources = try LocalSummaryService.sourceChunks(meeting: meeting).flatMap { $0 }
+
+        XCTAssertEqual(sources.map(\.id), ["early", "simultaneous", "late"])
+        XCTAssertEqual(sources.map(\.text), [early.text, simultaneous.text, late.text])
+        XCTAssertEqual(sources.map(\.start), [0, 0, 8])
+        XCTAssertEqual(sources.map(\.end), [2, 1, 10])
+        XCTAssertEqual(meeting, original)
+    }
+
 }

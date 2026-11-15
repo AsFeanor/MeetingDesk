@@ -115,7 +115,7 @@ final class WorkspaceVisualSnapshotTests: XCTestCase {
                     hosting.wantsLayer = true
                     hosting.layoutSubtreeIfNeeded()
                     // No NSWindow is created or ordered, and no app event loop is started.
-                    RunLoop.main.run(until: Date().addingTimeInterval(0.04))
+                    RunLoop.main.run(until: Date().addingTimeInterval(0.12))
                     hosting.layoutSubtreeIfNeeded()
                     CATransaction.flush()
                     image = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil,
@@ -155,7 +155,7 @@ final class WorkspaceVisualSnapshotTests: XCTestCase {
                     size: size, scheme: scheme, path: output.appendingPathComponent(filename))
                 results.append(["file": filename, "width": Int(size.width), "height": Int(size.height), "appearance": appearance])
             }
-            for (name, selected) in [("welcome", Optional<UUID>.none), ("new-meeting", fixture.meetings.first(where: { $0.segments.isEmpty && $0.audioFileName == nil })?.id)] {
+            for (name, selected) in [("welcome", Optional<UUID>.none), ("new-meeting", fixture.meetings.first(where: { $0.segments.isEmpty && $0.audioFileName == nil && $0.notes == nil })?.id)] {
                 store.selectedID = selected
                 let filename = "\(name)-\(appearance)-900x620.png"
                 try renderAdditional(RootView(store: store, recorder: store.recorder).defaultAppStorage(defaults)
@@ -165,6 +165,42 @@ final class WorkspaceVisualSnapshotTests: XCTestCase {
             }
             store.selectedID = fixture.selectedMeetingID
         }
+
+        // A second entirely synthetic archive exercises the actual transcript component.
+        let conversationArchive = output.appendingPathComponent("synthetic-conversation", isDirectory: true)
+        let conversationStore = AppStore(root: conversationArchive, initializeSystemServices: false, audioRetentionDefaults: defaults)
+        var conversation = conversationStore.newMeeting()
+        conversation.title = "Örnek konuşma akışı"
+        conversation.duration = 60
+        let ece = SpeakerReviewPerson(name: "Ece"), deniz = SpeakerReviewPerson(name: "Deniz")
+        func segment(_ id: String, _ speaker: String, _ source: SpeakerAudioSource, _ start: Double, _ text: String) -> TranscriptSegment {
+            let pieces = text.split(separator: " ").enumerated().map { index, value in
+                TranscriptWord(text: String(value) + (index == text.split(separator: " ").count - 1 ? "" : " "), start: start + Double(index) * 0.5, end: start + Double(index + 1) * 0.5)
+            }
+            return TranscriptSegment(id: id, speaker: speaker, start: start, end: pieces.last!.end, text: text, words: pieces, audioSource: source)
+        }
+        conversation.segments = [
+            segment("remote-one", "system:A", .system, 2, "Yeni arayüzün kayıt akışını bugün birlikte değerlendirelim."),
+            segment("echo-one", "microphone:A", .microphone, 2.08, "Yeni arayüzün kayıt akışını bugün birlikte değerlendirelim."),
+            segment("local-one", "microphone:B", .microphone, 8, "Önceki toplantıdan kalan kontrast kontrolünü tamamladım."),
+            segment("remote-two", "system:A", .system, 14, "Güzel. Kayıt bittikten sonra notları da kontrol edelim."),
+            segment("remote-three", "system:A", .system, 19, "Kısa ses parçalarıyla kararların kaynağını dinleyebiliriz.")
+        ]
+        conversation.speakerTurns = conversation.segments.map { .init(speakerID: $0.speaker, source: $0.audioSource!, start: $0.start, end: $0.end) }
+        conversation.speakerReviewPeople = [ece, deniz]
+        conversation.speakerReviewAssignments = ["system:A": ece.id, "microphone:A": ece.id, "microphone:B": deniz.id]
+        conversation.speakerRecognitionEngine = "synthetic-fixture"
+        XCTAssertTrue(conversationStore.update(conversation.id) { $0 = conversation })
+        let conversationBefore = try archiveContents(in: conversationArchive)
+        for (appearance, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+            defaults.set(appearance, forKey: WorkspaceAppearance.defaultsKey)
+            let content = TranscriptWorkspaceView(store: conversationStore, meeting: conversation, query: .constant(""), focusedSegmentID: .constant(nil), editingSegmentID: .constant(nil), onReviewSpeaker: { _ in })
+            let filename = "transcript-\(appearance)-900x620.png"
+            try renderAdditional(content.defaultAppStorage(defaults).environment(\.colorScheme, scheme),
+                size: NSSize(width: 900, height: 620), scheme: scheme, path: output.appendingPathComponent(filename))
+            results.append(["file": filename, "width": 900, "height": 620, "appearance": appearance])
+        }
+        XCTAssertEqual(try archiveContents(in: conversationArchive), conversationBefore)
 
         XCTAssertEqual(try archiveContents(in: archive), expectedArchiveHashes,
                        "Rendering must not mutate synthetic meeting data.")
@@ -191,7 +227,7 @@ final class WorkspaceVisualSnapshotTests: XCTestCase {
         hosting.frame = NSRect(origin: .zero, size: size)
         hosting.wantsLayer = true
         hosting.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.04))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.12))
         hosting.layoutSubtreeIfNeeded()
         CATransaction.flush()
         let image = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width), pixelsHigh: Int(size.height),
