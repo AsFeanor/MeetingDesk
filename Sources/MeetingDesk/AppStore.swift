@@ -7,6 +7,9 @@ import UniformTypeIdentifiers
 final class AppStore: ObservableObject {
     @Published var meetings: [Meeting] = []
     @Published var selectedID: UUID?
+    @Published var workspaceCatalog = WorkspaceCatalog()
+    @Published var glossaryEntries: [GlossaryEntry] = []
+    private let archiveQuestionIndex = ArchiveQuestionIndex()
     @Published var errorMessage: String?
     @Published var statusMessage = ""
     @Published var isBusy = false
@@ -171,6 +174,38 @@ final class AppStore: ObservableObject {
         return status
     }
 
+    func archiveAnswer(question: String, meetingIDs: Set<UUID>?) async throws -> ArchiveAnswer {
+        guard !workInProgress else { throw MeetingError.message("Devam eden işlem bittikten sonra sorabilirsin.") }
+        isBusy = true
+        statusMessage = "Toplantı geçmişinde kaynaklar aranıyor…"
+        var completed = false
+        defer {
+            isBusy = false
+            statusMessage = Task.isCancelled ? "Soru iptal edildi." : (completed ? "Toplantı geçmişi sorgusu tamamlandı." : "Sorgu tamamlanamadı. Toplantılar korunuyor.")
+        }
+        try Task.checkCancellation()
+        let snapshot = meetings
+        try await archiveQuestionIndex.replace(meetings: snapshot)
+        let context = try await archiveQuestionIndex.retrieve(question: question, meetingIDs: meetingIDs)
+        try Task.checkCancellation()
+        let answer: ArchiveAnswer
+        if context.sources.isEmpty { answer = .abstention(context: context) }
+        else {
+            guard try await ensureLocalSummaryRuntime() == .ready else {
+                throw MeetingError.message("Yerel Qwen modeli hazır değil. Ayarlar’daki Özet modeli bölümünden hazırlayabilirsin.")
+            }
+            statusMessage = "Seçili konuşma kaynakları Mac’te değerlendiriliyor…"
+            answer = try await OllamaSummaryService().answerArchiveQuestion(context: context)
+        }
+        try Task.checkCancellation()
+        let current = meetings
+        let valid = await Task.detached(priority: .utility) { answer.isCurrent(in: current) }.value
+        try Task.checkCancellation()
+        guard valid, current == meetings else { throw ArchiveQuestionFailure.staleSources }
+        completed = true
+        return answer
+    }
+
     func prepareLocalSummaryModel() {
         guard !workInProgress, localSummaryBackend == .qwen else { return }
         errorMessage = nil
@@ -274,6 +309,9 @@ final class AppStore: ObservableObject {
             audioRetentionPolicy = policy
         }
         reload()
+        loadWorkspaceCatalog()
+        do { glossaryEntries = try GlossaryStore(root: library.root).load() }
+        catch { errorMessage = error.localizedDescription }
         do { voiceProfiles = try voiceProfileStore.load() } catch { errorMessage = error.localizedDescription }
         if initializeSystemServices && previewRoot == nil { refreshKey(); refreshMicrophones() }
         Publishers.CombineLatest4(recorder.$isRecording, $isBusy, $showMicrophoneCheck, notion.$isExporting)

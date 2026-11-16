@@ -57,7 +57,7 @@ struct CarryoverActionsView: View {
                 Label("Bağlı toplantı artık kullanılamıyor. Önceki toplantıyı yeniden seç.", systemImage: "exclamationmark.triangle")
                     .font(.system(size: 12)).foregroundStyle(WorkspaceStyle.recording)
             } else if let suggestion {
-                Text("Aynı başlıklı önceki toplantı: \(suggestion.title)")
+                Text("Önceki görüşme önerisi: \(suggestion.title)")
                     .font(.system(size: 12)).foregroundStyle(WorkspaceStyle.muted)
                 HStack {
                     Text(suggestion.createdAt.formatted(date: .abbreviated, time: .shortened))

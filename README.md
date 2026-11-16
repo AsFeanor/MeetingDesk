@@ -4,7 +4,31 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-**0.9.1 / yapı 22** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+**0.10.0 / yapı 23** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+
+## İşlerim, projeler ve toplantı serileri
+
+Sol menüdeki **İşlerim**, bütün toplantılardaki aksiyonları tek yerde gösterir. Kişi, proje, seri, açık/tamamlanan durum ve toplantı tarihiyle süzün; arama görev, sorumlu ve yazılmış tarih metnini de kapsar. Tarih filtresi toplantının tarihidir; konuşmadaki “gelecek cuma” gibi ifadeler tahminle takvim tarihine çevrilmez. Tamamlanan iş kendi özgün toplantısında güncellenir. Sahibi veya tarihi belirtilmemiş maddeler açıkça gösterilir.
+
+**Projeler** üzerinden proje ve düzenli toplantı serisi oluşturun. Toplantının sağ ayrıntı panelinden veya proje ekranındaki bağları düzenleme bölümünden üyeliğini seçin. Son iki görüşmenin notlarını yan yana, geçmiş kararları ve açık işleri toplantı bağlantılarıyla görebilirsiniz. Aynı serideki önceki görüşme, kalan işler için önerilir; bağlantı yine sen onaylayınca kaydedilir. Başlık veya kişi adına göre otomatik gruplama yapılmaz. Bir grubu silmeden önce bağlı toplantıları ayırın.
+
+## Önemli anlar
+
+Kayıt sırasında **Önemli an** düğmesiyle zamanı işaretleyip kısa not ekleyin. **⌘⇧M**, kayıt sürerken başka uygulamalardayken de işaret koyar; kısayol yalnız kayıt boyunca etkinleşir. Küçük kayıt kartında ve menü çubuğunda da işaretleme bulunur. İşaretler toplantının **Özet → Önemli anlar** bölümünde görünür; notları düzenlenebilir veya silinebilir. Kaydı dinlerken alt çubuktaki yer imi düğmesi de kullanılabilir.
+
+Bir zamana tıklayınca birleşik kayıt o andan dinlenir; o anı kapsayan transkript bölümü varsa açılır. Ses saklama süresi dolmuşsa not ve metin bağlantısı korunur. İşaretler ses ve transkript dosyalarını değiştirmez.
+
+## Toplantı geçmişine sor
+
+Sol menüdeki **Sor** ile bir karar veya konuşulan konu hakkında soru sorun. Tüm arşiv, açık toplantı, proje veya seri seçilebilir. Sor’a bastığınızda ilgili konuşma bölümleri bulunup mevcut yerel Qwen modeliyle değerlendirilir; ek uygulama, API anahtarı veya yeni model gerektirmez. Model önceden hazırlanmamışsa Ayarlar’daki Özet modeli bölümünden indirilmelidir. Bu özellik, seçili özet modundan bağımsız olarak yalnız Mac’te çalışır.
+
+Her yanıtta kısa açıklama, özgün alıntı ve toplantı/zaman bağlantısı gösterilir. Eşleşen kaynak bulunamazsa veya model yeterli kanıt görmezse yanıt üretilmez. En fazla 24 tam konuşma bölümü değerlendirilir; uzun bölümler kısaltılmadan atlanır ve sınır ekranda açıklanır. Görünen alıntının kaynağı doğrulanır; modelin anlam yorumunu özellikle önemli kararlar için kaynağı açarak kontrol edin. Soru ve yanıtlar toplantı dosyalarına yazılmaz. Model işlemi yalnız açıkça soru gönderildiğinde başlar.
+
+## Kişisel terimler sözlüğü
+
+**Sözlük** bölümünde doğru yazımı ve karşılaşılabilecek yanlış yazımları ekleyin. Transkriptteki **Yazım önerileri** veya toplantı menüsündeki **Terim düzeltmelerini gözden geçir…** ile eşleşmeleri açın. Önerinin önce/sonra metnini ve varsa sesini kontrol edip yalnız seçtiğiniz yazımı uygulayın. Tam kelime veya ifade eşleştirmesi kullanılır; belirsiz ya da çakışan eşleşmeler otomatik değiştirilmez.
+
+Onaylanan düzeltmeden önce transkriptin geçmiş sürümü saklanır. Kaynak kimlikleri, sesler ve kişi seçimleri korunur; değişen metnin kelime zamanları temizlenir ve özetin yenilenmesi gerektiği belirtilir. Önceki döküme dön seçeneği kullanılabilir. Sözlük ve proje bilgileri yalnız yerel arşivde saklanır; yayın paketlerine eklenmez.
 
 ## Önceki işler ve kaynak sesleri
 

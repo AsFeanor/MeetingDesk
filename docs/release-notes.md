@@ -1,8 +1,9 @@
-# Toplantı 0.9.1
+# Toplantı 0.10.0
 
-- Duraklatılmış ses oynatımında ekranın sürekli yenilenmesine yol açan hata düzeltildi.
-- Transkriptin sıralanması, konuşmacı adları ve akıcı okuma görünümü yalnız ilgili veriler değiştiğinde hazırlanır. Arama ve ses oynatma sırasında aynı büyük transkript tekrar tekrar işlenmez.
-- Toplantı listesi, kişi sayısı, katılımcılar ve notların ses bağlantıları her ekran yenilemesinde baştan hesaplanmaz.
-- Yerel özet altyapısının işlem önceliği düşürüldü ve CPU hesaplama iş parçacığı sayısı sınırlandı. Model, tam transkript kapsamı ve GPU kullanımı korunur.
+- İşlerim: tüm toplantıların görevlerini kişi, proje, seri, durum ve toplantı tarihiyle süzme; özgün görevi tamamlama ve kaynağa gitme.
+- Projeler ve toplantı serileri: açık üyelik seçimi, son iki görüşme karşılaştırması, geçmiş kararlar ve açık işler.
+- Önemli anlar: kayıt sırasında düğme veya ⌘⇧M ile zaman işareti, kısa not ve sonradan ilgili sesi/metni açma. Kısayol yalnız kayıt sırasında diğer uygulamalardan da kullanılabilir.
+- Toplantı geçmişine sor: mevcut yerel Qwen modeliyle kısa yanıtlar, doğrulanan özgün alıntılar ve toplantı/zaman kaynakları. İşlem yalnız Sor’a basınca çalışır; seçilen kaynaklar ve kapsam sınırı görünür.
+- Kişisel sözlük: ürün/kişi adları ve kısaltmalar için açıkça onaylanan yazım önerileri. Düzeltmeden önce transkript geçmişi saklanır; ses ve kişi eşleştirmeleri korunur.
 
-Mevcut toplantıları yeniden işlemeniz gerekmez.
+Mevcut toplantıları yeniden oluşturmak gerekmez. Yeni proje, sözlük ve işaret bilgileri yalnız bu Mac’te saklanır.

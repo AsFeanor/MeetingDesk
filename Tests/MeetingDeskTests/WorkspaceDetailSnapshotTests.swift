@@ -60,6 +60,21 @@ final class WorkspaceDetailSnapshotTests: XCTestCase {
         XCTAssertNil(snapshot.segmentsByID["missing"])
     }
 
+    func testUnreferencedTranscriptPreviewReusesAvailabilityAndRejectsStaleOrAmbiguousSegments() {
+        var value = meeting()
+        let unreferenced = TranscriptSegment(id: "other", speaker: "system:A", start: 40, end: 44, text: "Another source", audioSource: .system)
+        value.segments.append(unreferenced)
+        var checks = 0
+        let snapshot = WorkspaceDetailSnapshot.build(meeting: value) { _ in checks += 1; return true }
+        for _ in 0..<100 { XCTAssertTrue(snapshot.canPreview(unreferenced)) }
+        XCTAssertEqual(checks, 3, "Playback redraws must not probe files or rebuild a full source index")
+        var edited = unreferenced; edited.text = "Changed"
+        XCTAssertFalse(snapshot.canPreview(edited))
+        value.segments.append(unreferenced)
+        XCTAssertFalse(WorkspaceDetailSnapshot.build(meeting: value) { _ in true }.canPreview(unreferenced))
+        XCTAssertFalse(WorkspaceDetailSnapshot.build(meeting: meeting()) { _ in false }.canPreview(meeting().segments[0]))
+    }
+
     func testActualMeetingChangesProduceFreshDataWithoutMutatingPriorSnapshot() {
         var value = meeting()
         let original = value
