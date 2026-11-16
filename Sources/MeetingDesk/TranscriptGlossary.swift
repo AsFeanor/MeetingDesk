@@ -45,10 +45,16 @@ enum GlossaryValidation {
         for entry in entries {
             guard validTerm(entry.canonical), !entry.variants.isEmpty, entry.variants.count <= 100,
                   entry.variants.allSatisfy(validTerm) else { throw GlossaryError.invalidEntry }
-            for term in [entry.canonical] + entry.variants {
+            let canonicalKey = key(entry.canonical)
+            guard owners[canonicalKey] == nil else { throw GlossaryError.ambiguousTerm(entry.canonical) }
+            owners[canonicalKey] = entry.id
+            var variantKeys = Set<String>()
+            for term in entry.variants {
                 let key = key(term)
-                // Duplicate terms within one entry are rejected as well as conflicting mappings.
-                guard owners[key] == nil else { throw GlossaryError.ambiguousTerm(term) }
+                // A different spelling may share its own canonical key.
+                // Repeated variants and mappings owned by another entry remain ambiguous.
+                guard term != entry.canonical, variantKeys.insert(key).inserted,
+                      owners[key] == nil || owners[key] == entry.id else { throw GlossaryError.ambiguousTerm(term) }
                 owners[key] = entry.id
             }
         }
@@ -90,13 +96,13 @@ enum TranscriptGlossary {
             guard canonicalOwners[GlossaryValidation.key(entry.canonical)]?.count == 1 else { continue }
             for variant in entry.variants {
                 let key = GlossaryValidation.key(variant)
-                guard key != GlossaryValidation.key(entry.canonical) else { continue }
                 groups[key, default: []].append(Term(entryID: entry.id, variant: variant, canonical: entry.canonical))
             }
         }
         let terms: [Term] = groups.compactMap { key, values in
-            guard values.count == 1, canonicalOwners[key] == nil else { return nil }
-            return values.first
+            guard values.count == 1, let term = values.first,
+                  canonicalOwners[key] == nil || (canonicalOwners[key]?.count == 1 && canonicalOwners[key]?.first?.id == term.entryID) else { return nil }
+            return term
         }.sorted {
             if $0.variant.count != $1.variant.count { return $0.variant.count > $1.variant.count }
             return $0.entryID.uuidString < $1.entryID.uuidString

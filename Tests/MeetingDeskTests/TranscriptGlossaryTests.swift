@@ -66,8 +66,8 @@ final class TranscriptGlossaryTests: XCTestCase {
         XCTAssertTrue(TranscriptGlossary.suggestions(segments: [value], entries: [term, term]).isEmpty)
     }
 
-    func testValidationRejectsEmptyTermsSelfMappingsAndCaseFoldDuplicates() {
-        for value in [entry("", "foo"), GlossaryEntry(canonical: "Foo", variants: []), entry("İsim", "İSİM"),
+    func testValidationRejectsEmptyTermsExactSelfMappingsAndCaseFoldDuplicates() {
+        for value in [entry("", "foo"), GlossaryEntry(canonical: "Foo", variants: []), entry("İsim", "İsim"), entry("Café", "Cafe\u{301}"),
                       GlossaryEntry(canonical: "Foo", variants: ["bar", "BAR"]), entry("Foo", "\nbar"), entry("Foo", " ")] {
             XCTAssertThrowsError(try GlossaryValidation.entries([value]))
         }
@@ -75,6 +75,40 @@ final class TranscriptGlossaryTests: XCTestCase {
         XCTAssertThrowsError(try GlossaryValidation.entries([entry(), entry("Başka", "Lifesycle")]))
         let value = entry()
         XCTAssertThrowsError(try GlossaryValidation.entries([value, value]))
+    }
+
+    func testCaseOnlyVariantsSuggestOnlySpellingsThatNeedCorrection() throws {
+        let entries = [entry("API", "api"), entry("Lifesycle", "lifesycle"), entry("İsim", "isim")]
+        XCTAssertNoThrow(try GlossaryValidation.entries(entries))
+        let source = segment("api API lifesycle Lifesycle İSİM İsim alifesycle lifesycle_")
+        let suggestions = TranscriptGlossary.suggestions(segments: [source], entries: entries)
+        XCTAssertEqual(suggestions.map(\.matchedText), ["api", "lifesycle", "İSİM"])
+        XCTAssertEqual(suggestions.map(\.canonical), ["API", "Lifesycle", "İsim"])
+        let suggestion = try XCTUnwrap(suggestions.first)
+        let original = Meeting(title: "Synthetic", segments: [source])
+        let updated = try TranscriptGlossary.applying(suggestion, to: original, entries: entries)
+        XCTAssertEqual(updated.segments[0].text, "API API lifesycle Lifesycle İSİM İsim alifesycle lifesycle_")
+        XCTAssertEqual(updated.segments[0].speaker, source.speaker)
+        XCTAssertEqual(updated.segments[0].audioSource, source.audioSource)
+        XCTAssertThrowsError(try TranscriptGlossary.applying(suggestion, to: updated, entries: entries))
+    }
+
+    func testCaseOnlyVariantsLeaveCorrectCanonicalTokensAndEquivalentUnicodeUntouched() throws {
+        let entries = [entry("CRM", "crm"), entry("Lifesycle", "lifesycle"), entry("Café", "CAFÉ")]
+        XCTAssertNoThrow(try GlossaryValidation.entries(entries))
+        XCTAssertTrue(TranscriptGlossary.suggestions(segments: [segment("CRM Lifesycle Café Cafe\u{301} CRMx Lifesycle_")], entries: entries).isEmpty)
+        let suggestions = TranscriptGlossary.suggestions(segments: [segment("crm CRM Crm")], entries: entries)
+        XCTAssertEqual(suggestions.map(\.matchedText), ["crm", "Crm"])
+        XCTAssertEqual(suggestions.map(\.canonical), ["CRM", "CRM"])
+    }
+
+    func testCaseOnlyVariantsKeepOtherEntryAndDuplicateVariantAmbiguityGuards() {
+        let term = entry("Lifesycle", "lifesycle")
+        let conflict = entry("Other", "LİFESYCLE")
+        XCTAssertThrowsError(try GlossaryValidation.entries([term, conflict]))
+        XCTAssertTrue(TranscriptGlossary.suggestions(segments: [segment("lifesycle")], entries: [term, conflict]).isEmpty)
+        XCTAssertThrowsError(try GlossaryValidation.entries([term, entry("lifesycle", "wrong")]))
+        XCTAssertThrowsError(try GlossaryValidation.entries([GlossaryEntry(canonical: "Lifesycle", variants: ["lifesycle", "LİFESYCLE"])]))
     }
 
     func testApplyingOneOccurrencePreservesOtherTextTimingIdentityAndAudio() throws {
