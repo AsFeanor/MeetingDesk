@@ -21,7 +21,7 @@ final class RecordingBookmarkShortcut {
             guard let event, let context else { return OSStatus(eventNotHandledErr) }
             var id = EventHotKeyID()
             let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
-                nil, MemoryLayout<EventHotKeyID>.size, nil, &id)
+                nil, numericCast(MemoryLayout<EventHotKeyID>.size), nil, &id)
             guard status == noErr, id.signature == RecordingBookmarkShortcut.signature, id.id == 1 else {
                 return OSStatus(eventNotHandledErr)
             }
