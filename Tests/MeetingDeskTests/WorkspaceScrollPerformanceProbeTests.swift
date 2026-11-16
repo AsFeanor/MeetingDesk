@@ -342,12 +342,19 @@ final class WorkspaceScrollPerformanceProbeTests: XCTestCase {
             "over50ms": values.filter { $0 > 50 }.count]
     }
     private func fixture(index: Int, segmentCount: Int) -> Meeting {
-        let segments = (0..<segmentCount).map { number in
-            TranscriptSegment(id: "synthetic-\(index)-\(number)",
-                speaker: number.isMultiple(of: 2) ? "system:\(number % 8)" : "microphone:\(number % 8)",
-                start: Double(number * 3), end: Double(number * 3 + 2),
-                text: "Sentetik performans örneği \(number). Kısa notları ve takip işlerini birlikte değerlendiriyoruz.",
-                audioSource: number.isMultiple(of: 2) ? .system : .microphone)
+        var segments: [TranscriptSegment] = []
+        segments.reserveCapacity(segmentCount)
+        for number in 0..<segmentCount {
+            let identifier: String = "synthetic-" + String(index) + "-" + String(number)
+            let source: SpeakerAudioSource = number.isMultiple(of: 2) ? .system : .microphone
+            let speakerPrefix: String = number.isMultiple(of: 2) ? "system:" : "microphone:"
+            let speaker: String = speakerPrefix + String(number % 8)
+            let text: String = "Sentetik performans örneği " + String(number)
+                + ". Kısa notları ve takip işlerini birlikte değerlendiriyoruz."
+            let start: Double = Double(number * 3)
+            let segment = TranscriptSegment(id: identifier, speaker: speaker, start: start,
+                end: start + 2, text: text, audioSource: source)
+            segments.append(segment)
         }
         func source(_ number: Int) -> [String] { [segments[min(number * 30, segmentCount - 1)].id] }
         let notes = MeetingNotes(summary: "Bu kayıt yalnızca yerel arayüz performansı için üretilmiş örnek veridir.",
