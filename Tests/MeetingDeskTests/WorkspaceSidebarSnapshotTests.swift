@@ -61,6 +61,7 @@ final class WorkspaceSidebarSnapshotTests: XCTestCase {
         XCTAssertTrue(row.hasTranscript)
         XCTAssertTrue(row.notesAreReviewed)
         XCTAssertEqual(row.duration, 85)
+        XCTAssertEqual(row.createdAtLabel, meeting.createdAt.formatted(.dateTime.day().month(.abbreviated)))
         meeting.title = "Düzenlenmiş başlık"
         meeting.notesNeedRefresh = true
         let after = build([meeting])
@@ -82,5 +83,61 @@ final class WorkspaceSidebarSnapshotTests: XCTestCase {
         XCTAssertEqual(build(source, profiles: [profile], query: "Sonuç yok").peopleCount, 2)
         XCTAssertEqual(source, [visible, hidden])
         XCTAssertEqual(profile.samples, [[1, 0]])
+    }
+
+    func testFlatItemsKeepHeadingsAndMeetingsInExistingDisplayOrder() {
+        let today = Meeting(title: "Bugün", createdAt: date(2026, 11, 15))
+        let sameDate = Meeting(title: "Aynı tarih", createdAt: today.createdAt)
+        let yesterday = Meeting(title: "Dün", createdAt: date(2026, 11, 14))
+        let week = Meeting(title: "Bu hafta", createdAt: date(2026, 11, 10))
+        let old = Meeting(title: "Önceki", createdAt: date(2026, 10, 30))
+        let snapshot = build([old, today, yesterday, week, sameDate])
+
+        XCTAssertEqual(snapshot.items.map(\.id), [
+            .heading(0), .meeting(today.id), .meeting(sameDate.id),
+            .heading(1), .meeting(yesterday.id), .heading(2), .meeting(week.id),
+            .heading(3), .meeting(old.id)
+        ])
+        XCTAssertEqual(snapshot.items.compactMap { item -> String? in
+            guard case .heading(_, let title) = item else { return nil }
+            return title
+        }, snapshot.groups.map(\.title))
+        XCTAssertEqual(snapshot.items.compactMap { item -> WorkspaceSidebarSnapshot.Row? in
+            guard case .meeting(let row) = item else { return nil }
+            return row
+        }, snapshot.groups.flatMap(\.meetings))
+    }
+
+    func testHistoricalBucketExposesEveryMeetingAsAnIndependentItem() {
+        let old = (0..<240).map { index in
+            Meeting(title: "Eski toplantı \(index)", createdAt: date(2026, 10, 1).addingTimeInterval(Double(index)))
+        }
+        let snapshot = build(old)
+
+        XCTAssertEqual(snapshot.groups.count, 1)
+        XCTAssertEqual(snapshot.groups.first?.id, 3)
+        XCTAssertEqual(snapshot.items.count, old.count + 1)
+        XCTAssertEqual(snapshot.items.first?.id, .heading(3))
+        XCTAssertEqual(snapshot.items.dropFirst().map(\.id), old.reversed().map { .meeting($0.id) })
+        XCTAssertEqual(Set(snapshot.items.map(\.id)).count, snapshot.items.count)
+    }
+
+    func testFilteredItemsKeepStableMeetingIdentityAndOmitEmptyHeadings() {
+        let action = ActionItem(id: "a", text: "Takip", owner: nil, due: nil, evidence: [])
+        var matching = Meeting(title: "Aranan", createdAt: date(2026, 10, 1))
+        matching.notes = notes(actions: [action])
+        let other = Meeting(title: "Diğer", createdAt: now)
+        let original = build([other, matching])
+        let filtered = build([other, matching], query: "Aranan", pending: true)
+
+        XCTAssertEqual(filtered.items.map(\.id), [.heading(3), .meeting(matching.id)])
+        XCTAssertEqual(filtered.items.last?.id, original.items.last?.id)
+        matching.title = "Aranan, düzenlendi"
+        let renamed = build([other, matching], query: "Aranan", pending: true)
+        XCTAssertEqual(renamed.items.map(\.id), filtered.items.map(\.id))
+        XCTAssertNotEqual(renamed.items, filtered.items)
+        matching.completedActions.insert(action.id)
+        XCTAssertTrue(build([other, matching], query: "Aranan", pending: true).items.isEmpty)
+        XCTAssertTrue(WorkspaceSidebarSnapshot.empty.items.isEmpty)
     }
 }

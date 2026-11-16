@@ -177,4 +177,94 @@ final class MeetingDetectionTests: XCTestCase {
         XCTAssertNil(detector.candidate)
         detector.stop()
     }
+
+    @MainActor
+    func testSlowAsyncSampleDoesNotHoldMainActor() async {
+        let sampler = ControlledMeetingSampler()
+        let detector = MeetingDetector(sampleAsync: { await sampler.sample() })
+        detector.start()
+        await waitUntil { await sampler.callCount == 1 }
+
+        // This main-actor continuation must run while the sample is still pending.
+        XCTAssertNil(detector.candidate)
+        let pendingCount = await sampler.pendingCount
+        XCTAssertEqual(pendingCount, 1)
+        detector.stop()
+        await sampler.finishNext(with: [zoom])
+    }
+
+    @MainActor
+    func testStopAndRestartWaitForOldSampleWithoutOverlapOrPublishingItsResult() async {
+        let sampler = ControlledMeetingSampler()
+        var time = at(0)
+        let detector = MeetingDetector(now: { time }, sampleAsync: { await sampler.sample() },
+                                       policy: MeetingDetectionPolicy(activationDelay: 0))
+        detector.start()
+        await waitUntil { await sampler.callCount == 1 }
+        detector.stop()
+        time = at(9)
+        detector.start()
+        let initialCallCount = await sampler.callCount
+        XCTAssertEqual(initialCallCount, 1)
+
+        await sampler.finishNext(with: [zoom])
+        await waitUntil { await sampler.callCount == 2 }
+        XCTAssertNil(detector.candidate)
+        let maximumPendingCount = await sampler.maximumPendingCount
+        XCTAssertEqual(maximumPendingCount, 1)
+        await sampler.finishNext(with: [zoom])
+        await waitUntil { detector.candidate == self.zoom }
+        detector.stop()
+    }
+
+    @MainActor
+    func testSuspensionDiscardsSampleThatStartedBeforeStateChanged() async {
+        let sampler = ControlledMeetingSampler()
+        var time = at(0)
+        let detector = MeetingDetector(now: { time }, sampleAsync: { await sampler.sample() })
+        detector.start()
+        await waitUntil { await sampler.callCount == 1 }
+        detector.setSuspended(true)
+        await sampler.finishNext(with: [zoom])
+        await waitUntil { await sampler.callCount == 2 }
+        XCTAssertNil(detector.candidate)
+
+        time = at(9)
+        detector.setSuspended(false)
+        await sampler.finishNext(with: [zoom])
+        await waitUntil { await sampler.callCount == 3 }
+        XCTAssertNil(detector.candidate)
+        let maximumPendingCount = await sampler.maximumPendingCount
+        XCTAssertEqual(maximumPendingCount, 1)
+        detector.stop()
+        await sampler.finishNext(with: [])
+    }
+
+    @MainActor
+    private func waitUntil(_ condition: () async -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
+        let deadline = Date().addingTimeInterval(2)
+        while !(await condition()), Date() < deadline { try? await Task.sleep(for: .milliseconds(1)) }
+        let satisfied = await condition()
+        XCTAssertTrue(satisfied, "Timed out waiting for the controlled sampler", file: file, line: line)
+    }
+}
+
+private actor ControlledMeetingSampler {
+    private(set) var callCount = 0
+    private(set) var maximumPendingCount = 0
+    private var pending: [CheckedContinuation<[DetectedMeeting], Never>] = []
+    var pendingCount: Int { pending.count }
+
+    func sample() async -> [DetectedMeeting] {
+        callCount += 1
+        return await withCheckedContinuation { continuation in
+            pending.append(continuation)
+            maximumPendingCount = max(maximumPendingCount, pending.count)
+        }
+    }
+
+    func finishNext(with meetings: [DetectedMeeting]) {
+        guard !pending.isEmpty else { return }
+        pending.removeFirst().resume(returning: meetings)
+    }
 }

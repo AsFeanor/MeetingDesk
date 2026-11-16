@@ -47,7 +47,8 @@ struct MeetingLibrary {
 
     private func transcriptHistory(for id: UUID) -> URL { directory(for: id).appendingPathComponent(".transcript-history", isDirectory: true) }
     func hasTranscriptVersion(for id: UUID) -> Bool {
-        ((try? FileManager.default.contentsOfDirectory(at: transcriptHistory(for: id), includingPropertiesForKeys: nil)) ?? []).contains { $0.pathExtension == "json" }
+        WorkspaceRenderProbe.record(.historyChecks)
+        return ((try? FileManager.default.contentsOfDirectory(at: transcriptHistory(for: id), includingPropertiesForKeys: nil)) ?? []).contains { $0.pathExtension == "json" }
     }
     func saveTranscriptVersion(_ meeting: Meeting) throws {
         let folder = transcriptHistory(for: meeting.id)
@@ -70,7 +71,8 @@ struct MeetingLibrary {
 
     private func notesHistory(for id: UUID) -> URL { directory(for: id).appendingPathComponent(".notes-history", isDirectory: true) }
     func hasNotesVersion(for id: UUID) -> Bool {
-        ((try? FileManager.default.contentsOfDirectory(at: notesHistory(for: id), includingPropertiesForKeys: nil)) ?? []).contains { $0.pathExtension == "json" }
+        WorkspaceRenderProbe.record(.historyChecks)
+        return ((try? FileManager.default.contentsOfDirectory(at: notesHistory(for: id), includingPropertiesForKeys: nil)) ?? []).contains { $0.pathExtension == "json" }
     }
     func saveNotesVersion(_ meeting: Meeting) throws {
         let folder = notesHistory(for: meeting.id)

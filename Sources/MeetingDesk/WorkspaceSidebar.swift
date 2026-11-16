@@ -16,13 +16,13 @@ struct WorkspaceSidebar: View {
     @AppStorage(WorkspaceAppearance.defaultsKey) private var appearanceRaw = WorkspaceAppearance.system.rawValue
     @State private var pendingOnly = false
     @State private var searchTerm = ""
-    @State private var hoveredID: UUID?
     @State private var archiveSnapshot = WorkspaceSidebarSnapshot.empty
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var selectionLocked: Bool { recorder.isRecording || store.hasPendingRecordingSession || store.showMicrophoneCheck }
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        WorkspaceRenderProbe.record(.sidebarBody)
+        return VStack(alignment: .leading, spacing: 0) {
             brand.padding(.horizontal, 20).padding(.top, 25).padding(.bottom, 25)
             primaryActions.padding(.horizontal, 16)
             search.padding(.horizontal, 16).padding(.top, 19)
@@ -41,6 +41,8 @@ struct WorkspaceSidebar: View {
             .onChange(of: store.voiceProfiles) { _, _ in rebuildArchiveSnapshot() }
             .onChange(of: pendingOnly) { _, _ in rebuildArchiveSnapshot() }
             .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in rebuildArchiveSnapshot() }
+            .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification).receive(on: RunLoop.main)) { _ in rebuildArchiveSnapshot() }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name.NSSystemTimeZoneDidChange).receive(on: RunLoop.main)) { _ in rebuildArchiveSnapshot() }
     }
     private var workspaceTools: some View {
         HStack(spacing: 5) {
@@ -148,61 +150,31 @@ struct WorkspaceSidebar: View {
         }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
     }
     private var archiveList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 19) {
-                if archiveSnapshot.groups.isEmpty { emptyArchive.padding(.horizontal, 12).padding(.top, 17) }
+        let selectedID = store.selectedID
+        let recordingID = recorder.isRecording ? store.recordingMeeting?.id : nil
+        let locked = selectionLocked
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: 5) {
+                if archiveSnapshot.items.isEmpty { emptyArchive.padding(.horizontal, 12).padding(.top, 17) }
                 else {
-                    ForEach(archiveSnapshot.groups) { group in
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(group.title).font(.system(size: 10, weight: .medium))
+                    ForEach(archiveSnapshot.items) { item in
+                        switch item {
+                        case .heading(let groupID, let title):
+                            Text(title).font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(WorkspaceStyle.muted).padding(.horizontal, 12).padding(.bottom, 3)
-                            ForEach(group.meetings) { meeting in row(meeting) }
+                                .padding(.top, groupID == archiveSnapshot.groups.first?.id ? 0 : 14)
+                        case .meeting(let meeting):
+                            WorkspaceArchiveRow(meeting: meeting, selected: selectedID == meeting.id,
+                                recording: recordingID == meeting.id, paused: recorder.isPaused,
+                                selectionLocked: locked) {
+                                    guard !selectionLocked else { return }
+                                    store.selectedID = meeting.id
+                                }
                         }
                     }
                 }
             }.padding(.horizontal, 8).padding(.top, 7).padding(.bottom, 20)
         }.scrollIndicators(.hidden)
-    }
-    private func row(_ meeting: WorkspaceSidebarSnapshot.Row) -> some View {
-        let selected = store.selectedID == meeting.id
-        let recording = recorder.isRecording && store.recordingMeeting?.id == meeting.id
-        let remaining = meeting.pendingActionCount
-        return Button {
-            guard !selectionLocked else { return }; store.selectedID = meeting.id
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: recording ? "record.circle.fill" : meeting.hasNotes ? "doc.text" : !meeting.hasTranscript ? "waveform" : "text.alignleft")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(recording ? WorkspaceStyle.recording : selected ? WorkspaceStyle.accent : WorkspaceStyle.muted)
-                    .frame(width: 18).padding(.top, 2).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(meeting.title).font(.system(size: 12, weight: selected ? .semibold : .medium))
-                        .foregroundStyle(WorkspaceStyle.ink).lineLimit(2).multilineTextAlignment(.leading)
-                    HStack(spacing: 5) {
-                        Text(meeting.createdAt.formatted(.dateTime.day().month(.abbreviated)))
-                        if meeting.duration > 0 { Text("·"); Text(timeLabel(meeting.duration)).monospacedDigit() }
-                        Spacer(minLength: 2)
-                        if recording { Text(recorder.isPaused ? "Duraklatıldı" : "Kayıtta").foregroundStyle(WorkspaceStyle.recording) }
-                        else if remaining > 0 {
-                            Image(systemName: "circle.dotted").accessibilityHidden(true)
-                            Text("\(remaining)").monospacedDigit()
-                        } else if meeting.notesAreReviewed {
-                            Image(systemName: "checkmark.circle").foregroundStyle(WorkspaceStyle.accent)
-                                .accessibilityLabel("Notlar kontrol edildi")
-                        }
-                    }.font(.system(size: 9.5)).foregroundStyle(WorkspaceStyle.muted)
-                }
-            }.padding(.horizontal, 12).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
-                .background(selected ? WorkspaceStyle.accent.opacity(0.085) : hoveredID == meeting.id ? WorkspaceStyle.surface.opacity(0.7) : .clear, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(alignment: .leading) {
-                    if selected { Capsule().fill(WorkspaceStyle.accent).frame(width: 3, height: 22).padding(.leading, 1) }
-                }.contentShape(RoundedRectangle(cornerRadius: 10))
-        }.buttonStyle(.plain).disabled(selectionLocked)
-            .onHover { hoveredID = $0 ? meeting.id : nil }
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hoveredID)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(selected ? .isSelected : [])
-            .help(meeting.title + (remaining > 0 ? " · \(remaining) açık aksiyon" : ""))
     }
     private var emptyArchive: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -251,5 +223,60 @@ struct WorkspaceSidebar: View {
     private func rebuildArchiveSnapshot() {
         archiveSnapshot = WorkspaceSidebarSnapshot.build(meetings: store.meetings, profiles: store.voiceProfiles,
             query: searchTerm, pendingOnly: pendingOnly)
+    }
+}
+
+/// Hover belongs to the affected row, so crossing rows while scrolling does not
+/// invalidate the sidebar's archive, controls and every other meeting row.
+private struct WorkspaceArchiveRow: View {
+    let meeting: WorkspaceSidebarSnapshot.Row
+    let selected: Bool
+    let recording: Bool
+    let paused: Bool
+    let selectionLocked: Bool
+    let onSelect: () -> Void
+    @State private var hovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        WorkspaceRenderProbe.record(.sidebarRow)
+        let remaining = meeting.pendingActionCount
+        return Button {
+            guard !selectionLocked else { return }
+            onSelect()
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: recording ? "record.circle.fill" : meeting.hasNotes ? "doc.text" : !meeting.hasTranscript ? "waveform" : "text.alignleft")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(recording ? WorkspaceStyle.recording : selected ? WorkspaceStyle.accent : WorkspaceStyle.muted)
+                    .frame(width: 18).padding(.top, 2).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(meeting.title).font(.system(size: 12, weight: selected ? .semibold : .medium))
+                        .foregroundStyle(WorkspaceStyle.ink).lineLimit(2).multilineTextAlignment(.leading)
+                    HStack(spacing: 5) {
+                        Text(meeting.createdAtLabel)
+                        if meeting.duration > 0 { Text("·"); Text(timeLabel(meeting.duration)).monospacedDigit() }
+                        Spacer(minLength: 2)
+                        if recording { Text(paused ? "Duraklatıldı" : "Kayıtta").foregroundStyle(WorkspaceStyle.recording) }
+                        else if remaining > 0 {
+                            Image(systemName: "circle.dotted").accessibilityHidden(true)
+                            Text("\(remaining)").monospacedDigit()
+                        } else if meeting.notesAreReviewed {
+                            Image(systemName: "checkmark.circle").foregroundStyle(WorkspaceStyle.accent)
+                                .accessibilityLabel("Notlar kontrol edildi")
+                        }
+                    }.font(.system(size: 9.5)).foregroundStyle(WorkspaceStyle.muted)
+                }
+            }.padding(.horizontal, 12).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(selected ? WorkspaceStyle.accent.opacity(0.085) : hovered ? WorkspaceStyle.surface.opacity(0.7) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(alignment: .leading) {
+                    if selected { Capsule().fill(WorkspaceStyle.accent).frame(width: 3, height: 22).padding(.leading, 1) }
+                }.contentShape(RoundedRectangle(cornerRadius: 10))
+        }.buttonStyle(.plain).disabled(selectionLocked)
+            .onHover { hovered = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .help(meeting.title + (remaining > 0 ? " · \(remaining) açık aksiyon" : ""))
     }
 }

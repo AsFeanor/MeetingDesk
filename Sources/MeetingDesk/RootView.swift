@@ -65,7 +65,8 @@ struct RootView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        WorkspaceRenderProbe.record(.rootBody)
+        return NavigationSplitView {
             WorkspaceSidebar(store: store, recorder: recorder, query: $query,
                 onNew: newMeeting, onImportAudio: { guard !store.workInProgress else { return }; store.importAudio() },
                 onImportTranscript: { guard !store.workInProgress else { return }; showImport = true },
@@ -372,6 +373,7 @@ struct RootView: View {
     }
 
     private func detail(_ meeting: Meeting) -> some View {
+        WorkspaceRenderProbe.record(.detailBody)
         let participants = detailSnapshot.meetingID == meeting.id ? detailSnapshot.participants : []
         let identified = detailSnapshot.meetingID == meeting.id ? detailSnapshot.identifiedParticipantCount : 0
         return VStack(spacing: 0) {
@@ -585,6 +587,7 @@ struct RootView: View {
     }
 
     private func overview(_ meeting: Meeting) -> some View {
+        WorkspaceRenderProbe.record(.overviewBody)
         let presentation = MeetingNotesPresentation(meeting: meeting)
         return ScrollViewReader { proxy in
             ScrollView {
