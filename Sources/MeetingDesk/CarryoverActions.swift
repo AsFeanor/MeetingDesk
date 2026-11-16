@@ -30,12 +30,17 @@ enum CarryoverActions {
         }
     }
 
-    /// An exact, case/whitespace-normalized title is only a suggestion. The user
+    /// Explicit series membership, or an exact normalized title in the same
+    /// project when ungrouped, provides only a suggestion. The user
     /// must accept it before any original task is surfaced or can be completed.
     static func suggestedPreviousMeeting(for meeting: Meeting, in meetings: [Meeting], now: Date = Date()) -> Meeting? {
+        let eligible = eligiblePreviousMeetings(for: meeting, in: meetings, now: now)
+            .filter { $0.projectID == meeting.projectID }
+        if let seriesID = meeting.seriesID {
+            return eligible.first { $0.seriesID == seriesID }
+        }
         guard let title = recurringTitle(meeting.title) else { return nil }
-        return eligiblePreviousMeetings(for: meeting, in: meetings, now: now)
-            .first { recurringTitle($0.title) == title }
+        return eligible.first { $0.seriesID == nil && recurringTitle($0.title) == title }
     }
 
     static func reminder(for meeting: Meeting, previousMeetingID: UUID?, in meetings: [Meeting],

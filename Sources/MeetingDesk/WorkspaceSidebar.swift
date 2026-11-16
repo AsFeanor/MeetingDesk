@@ -9,6 +9,10 @@ struct WorkspaceSidebar: View {
     var onImportTranscript: () -> Void
     var onPeople: () -> Void
     var onQuickOpen: () -> Void
+    var onWorkItems: () -> Void = {}
+    var onProjects: () -> Void = {}
+    var onQuestions: () -> Void = {}
+    var onGlossary: () -> Void = {}
     @AppStorage(WorkspaceAppearance.defaultsKey) private var appearanceRaw = WorkspaceAppearance.system.rawValue
     @State private var pendingOnly = false
     @State private var searchTerm = ""
@@ -22,7 +26,8 @@ struct WorkspaceSidebar: View {
             brand.padding(.horizontal, 20).padding(.top, 25).padding(.bottom, 25)
             primaryActions.padding(.horizontal, 16)
             search.padding(.horizontal, 16).padding(.top, 19)
-            archiveHeader.padding(.horizontal, 20).padding(.top, 25).padding(.bottom, 10)
+            workspaceTools.padding(.horizontal, 16).padding(.top, 14)
+            archiveHeader.padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 10)
             archiveList
             footer
         }.background(WorkspaceStyle.sidebar).foregroundStyle(WorkspaceStyle.ink)
@@ -36,6 +41,24 @@ struct WorkspaceSidebar: View {
             .onChange(of: store.voiceProfiles) { _, _ in rebuildArchiveSnapshot() }
             .onChange(of: pendingOnly) { _, _ in rebuildArchiveSnapshot() }
             .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in rebuildArchiveSnapshot() }
+    }
+    private var workspaceTools: some View {
+        HStack(spacing: 5) {
+            tool("İşlerim", symbol: "checklist", action: onWorkItems)
+            tool("Projeler", symbol: "folder", action: onProjects)
+            tool("Sor", symbol: "text.bubble", action: onQuestions)
+            tool("Sözlük", symbol: "character.book.closed", action: onGlossary)
+        }
+    }
+    private func tool(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: symbol).font(.system(size: 13, weight: .medium))
+                Text(title).font(.system(size: 9.5, weight: .medium)).lineLimit(1)
+            }.frame(maxWidth: .infinity).padding(.vertical, 10)
+                .foregroundStyle(WorkspaceStyle.accent)
+                .background(WorkspaceStyle.accent.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
+        }.buttonStyle(.plain).accessibilityLabel(title)
     }
     private var brand: some View {
         HStack(spacing: 11) {

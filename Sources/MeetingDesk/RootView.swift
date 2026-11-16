@@ -11,6 +11,16 @@ private enum DetailTab: String, CaseIterable {
     }
 }
 
+private enum WorkspaceTool: String, Identifiable {
+    case work, projects, questions, glossary
+    var id: String { rawValue }
+}
+private struct WorkspaceSourceNavigation {
+    let meetingID: UUID
+    let sourceID: String?
+}
+private struct GlossaryReviewRequest: Identifiable { let id: UUID }
+
 struct RootView: View {
     @ObservedObject var store: AppStore
     @ObservedObject var recorder: AudioRecorder
@@ -18,6 +28,9 @@ struct RootView: View {
     @State private var tab: DetailTab = .overview
     @State private var showImport = false
     @State private var showPeople = false
+    @State private var toolSheet: WorkspaceTool?
+    @State private var glossaryReview: GlossaryReviewRequest?
+    @State private var pendingWorkspaceNavigation: WorkspaceSourceNavigation?
     @State private var focusID: String?
     @State private var editSegment: String?
     @State private var sharingMeeting: Meeting?
@@ -56,7 +69,9 @@ struct RootView: View {
             WorkspaceSidebar(store: store, recorder: recorder, query: $query,
                 onNew: newMeeting, onImportAudio: { guard !store.workInProgress else { return }; store.importAudio() },
                 onImportTranscript: { guard !store.workInProgress else { return }; showImport = true },
-                onPeople: { showPeople = true }, onQuickOpen: { showQuickOpen = true })
+                onPeople: { showPeople = true }, onQuickOpen: { showQuickOpen = true },
+                onWorkItems: { showTool(.work) }, onProjects: { showTool(.projects) },
+                onQuestions: { showTool(.questions) }, onGlossary: { showTool(.glossary) })
                 .navigationSplitViewColumnWidth(min: 220, ideal: 252, max: 300)
         } detail: {
             GeometryReader { geometry in
@@ -97,6 +112,16 @@ struct RootView: View {
             }.frame(width: 380, height: 640).background(WorkspaceStyle.canvas)
         }
         .sheet(isPresented: $store.showSettings) { WorkspaceSettingsView(store: store) }
+        .sheet(item: $toolSheet) { tool in workspaceTool(tool).tint(WorkspaceStyle.accent) }
+        .sheet(item: $glossaryReview) { request in
+            GlossaryReviewView(store: store, meetingID: request.id, canPlay: { segment in
+                detailSnapshot.meetingID == request.id && detailSnapshot.canPreview(segment)
+            }, onPlay: { segment in
+                guard let meeting = store.meetings.first(where: { $0.id == request.id }),
+                      let excerpt = store.availableEvidenceExcerpts(in: meeting, evidence: [segment.id]).first else { return }
+                store.playEvidenceExcerpt(excerpt, meetingID: request.id)
+            })
+        }
         .sheet(isPresented: $showPeople) {
             PeopleView(store: store) { meetingID in
                 guard !store.workInProgress else { return }
@@ -129,9 +154,73 @@ struct RootView: View {
             if let meeting = store.selected, meeting.audioFileName == nil && meeting.segments.isEmpty && meeting.notes == nil {
                 tab = .overview
             }
+            if let target = pendingWorkspaceNavigation {
+                pendingWorkspaceNavigation = nil
+                if target.meetingID == store.selectedID { finishWorkspaceNavigation(target) }
+            }
         }
         .task(id: "\(store.processingMode.rawValue):\(store.localSummaryBackend.rawValue)") {
             if store.processingMode == .local { await store.refreshLocalSummaryModelStatus() }
+        }
+    }
+
+    private func showTool(_ tool: WorkspaceTool) {
+        store.stopPlayback()
+        toolSheet = tool
+    }
+    @ViewBuilder private func workspaceTool(_ tool: WorkspaceTool) -> some View {
+        switch tool {
+        case .work: WorkItemsView(store: store, onOpenMeeting: openWorkspaceMeeting)
+        case .projects: ProjectSeriesView(store: store, initialProjectID: store.selected?.projectID,
+            initialSeriesID: store.selected?.seriesID, onOpenMeeting: openWorkspaceMeeting)
+        case .glossary: GlossaryView(store: store)
+        case .questions:
+            MeetingArchiveQuestionView(meetings: store.meetings, scopes: questionScopes,
+                isBusy: store.workInProgress, canNavigate: !store.workInProgress,
+                onAsk: { question, ids in try await store.archiveAnswer(question: question, meetingIDs: ids) },
+                onOpenSource: { openWorkspaceMeeting($0, $1) })
+        }
+    }
+    private var questionScopes: [ArchiveQuestionScope] {
+        var values: [ArchiveQuestionScope] = []
+        if let meeting = store.selected {
+            values.append(.init(id: "meeting-" + meeting.id.uuidString, title: "Bu toplantı · " + meeting.title, meetingIDs: [meeting.id]))
+        }
+        for project in store.workspaceCatalog.projects {
+            values.append(.init(id: "project-" + project.id.uuidString, title: "Proje · " + project.name,
+                meetingIDs: Set(store.meetings.filter { $0.projectID == project.id }.map(\.id))))
+        }
+        for series in store.workspaceCatalog.series {
+            values.append(.init(id: "series-" + series.id.uuidString, title: "Seri · " + series.name,
+                meetingIDs: Set(store.meetings.filter { $0.seriesID == series.id }.map(\.id))))
+        }
+        return values
+    }
+    private func openWorkspaceMeeting(_ id: UUID, _ sourceID: String?) {
+        guard !store.workInProgress, store.meetings.filter({ $0.id == id }).count == 1,
+              let meeting = store.meetings.first(where: { $0.id == id }) else { return }
+        if let sourceID, meeting.segments.filter({ $0.id == sourceID }).count != 1 { return }
+        toolSheet = nil; store.stopPlayback()
+        let target = WorkspaceSourceNavigation(meetingID: id, sourceID: sourceID)
+        if store.selectedID == id { finishWorkspaceNavigation(target) }
+        else { pendingWorkspaceNavigation = target; store.selectedID = id }
+    }
+    private func finishWorkspaceNavigation(_ target: WorkspaceSourceNavigation) {
+        guard store.selectedID == target.meetingID else { return }
+        if let id = target.sourceID, let meeting = store.selected,
+           let segment = meeting.segments.first(where: { $0.id == id }) {
+            openSource(segment)
+        } else { tab = .overview }
+    }
+    private func openBookmark(_ bookmark: MeetingBookmark, in meeting: Meeting) {
+        guard !store.workInProgress, store.selectedID == meeting.id,
+              (store.selected?.bookmarks ?? []).contains(bookmark), bookmark.time.isFinite,
+              bookmark.time >= 0, bookmark.time <= meeting.duration else { return }
+        store.playbackSource = .mixed
+        store.seek(bookmark.time)
+        if store.playbackSources(for: meeting).contains(.mixed), !store.isPlaying { store.togglePlayback() }
+        if let source = MeetingBookmarkPolicy.source(for: bookmark, in: meeting) {
+            focusID = source.id; transcriptQuery = ""; tab = .transcript
         }
     }
 
@@ -220,6 +309,8 @@ struct RootView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 12) {
+                    inspectorHeading("PROJE VE SERİ")
+                    MeetingOrganizationAssignmentView(store: store, meeting: meeting)
                     inspectorHeading("NOT AYARLARI")
                     Text("Toplantı türü").font(.system(size: 11)).foregroundStyle(WorkspaceStyle.muted)
                     Picker("Toplantı şablonu", selection: Binding(get: { meeting.template }, set: { store.setTemplate($0, for: meeting.id) })) {
@@ -306,6 +397,8 @@ struct RootView: View {
                         .buttonStyle(WorkspaceQuietButtonStyle())
                         .disabled(store.workInProgress || (meeting.segments.isEmpty && meeting.notes == nil))
                     Menu {
+                        Button("Terim düzeltmelerini gözden geçir…") { glossaryReview = GlossaryReviewRequest(id: meeting.id) }
+                            .disabled(meeting.segments.isEmpty || store.workInProgress)
                         Button("Notları düzenle…") { editingMeeting = meeting }.disabled(meeting.notes == nil || store.workInProgress)
                         Button("Önceki nota dön") { store.restorePreviousNotes() }.disabled(!store.hasPreviousNotes || store.workInProgress)
                         Divider()
@@ -398,6 +491,11 @@ struct RootView: View {
                 Slider(value: Binding(get: { store.playbackTime }, set: { store.seek($0) }), in: 0...max(1, store.playbackDuration > 0 ? store.playbackDuration : meeting.duration))
                     .labelsHidden().disabled(store.isBusy).accessibilityLabel("Kayıtta konum")
                 Text(timeLabel(store.playbackDuration > 0 ? store.playbackDuration : meeting.duration)).font(.system(size: 10).monospacedDigit()).foregroundStyle(WorkspaceStyle.muted)
+                Button {
+                    _ = store.addBookmark(at: store.playbackTime, in: meeting.id)
+                } label: { Image(systemName: "bookmark").frame(width: 20) }
+                    .buttonStyle(.plain).disabled(store.workInProgress)
+                    .help("Dinlediğin anı işaretle").accessibilityLabel("Bu anı işaretle")
                 Menu {
                     Picker("Dinlenecek ses", selection: $store.playbackSource) {
                         ForEach(store.playbackSources(for: meeting)) { Text($0.label).tag($0) }
@@ -463,6 +561,7 @@ struct RootView: View {
                 } label: { Image(systemName: recorder.isPaused ? "play.fill" : "pause.fill").frame(width: 18) }
                     .buttonStyle(WorkspaceQuietButtonStyle()).disabled(store.isBusy)
                     .accessibilityLabel(recorder.isPaused ? "Kayda devam et" : "Kaydı duraklat")
+                RecordingBookmarkButton(store: store)
                 Button { Task { await store.finishRecording() } } label: { Label("Bitir ve sakla", systemImage: "stop.fill") }
                     .buttonStyle(WorkspacePrimaryButtonStyle(tint: WorkspaceStyle.recording)).disabled(store.isBusy)
             }
@@ -490,6 +589,7 @@ struct RootView: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
+                    MeetingBookmarksView(store: store, meeting: meeting, onOpen: { openBookmark($0, in: meeting) })
                     if let notes = meeting.notes {
                         HStack(spacing: 8) {
                             WorkspaceBadge(text: meeting.notesAreReviewed ? "Gözden geçirildi" : "Gözden geçirilmeyi bekliyor",
@@ -628,7 +728,8 @@ struct RootView: View {
     private func transcript(_ meeting: Meeting) -> some View {
         TranscriptWorkspaceView(store: store, meeting: meeting, query: $transcriptQuery,
             focusedSegmentID: $focusID, editingSegmentID: $editSegment,
-            onReviewSpeaker: { reviewingSpeaker = SpeakerReviewRequest(meetingID: meeting.id, initialSpeakerID: $0) })
+            onReviewSpeaker: { reviewingSpeaker = SpeakerReviewRequest(meetingID: meeting.id, initialSpeakerID: $0) },
+            onReviewTerms: { glossaryReview = GlossaryReviewRequest(id: meeting.id) })
             .id(meeting.id)
     }
 

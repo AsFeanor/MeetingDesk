@@ -86,6 +86,18 @@ final class OllamaSummaryService: @unchecked Sendable {
         } catch { throw Self.safe(error) }
     }
 
+    func answerArchiveQuestion(context: ArchiveQuestionContext) async throws -> ArchiveAnswer {
+        try Task.checkCancellation()
+        guard !context.sources.isEmpty else { return .abstention(context: context) }
+        let body = try ArchiveQuestionPrompt.requestBody(context: context)
+        do {
+            guard try await localModelIsReady() else { throw Failure.modelMissing }
+            let data = try await load(Self.request(path: "/api/chat", body: body))
+            try Task.checkCancellation()
+            return try ArchiveQuestionPrompt.answer(from: data, context: context)
+        } catch { throw Self.safe(error) }
+    }
+
     private func localModelIsReady() async throws -> Bool {
         try await requireSupportedRuntime()
         let tags = try Self.object(try await load(Self.request(path: "/api/tags")))
@@ -351,6 +363,7 @@ final class OllamaSummaryService: @unchecked Sendable {
     }
 
     private static func safe(_ error: Error) -> Error {
+        if error is ArchiveQuestionFailure { return error }
         if error is CancellationError || (error as? URLError)?.code == .cancelled { return CancellationError() }
         if error is Failure || error is MeetingError { return error }
         return Failure.serviceUnavailable

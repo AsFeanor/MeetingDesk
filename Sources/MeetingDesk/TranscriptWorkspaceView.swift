@@ -19,6 +19,7 @@ struct TranscriptWorkspaceView: View {
     @Binding var focusedSegmentID: String?
     @Binding var editingSegmentID: String?
     let onReviewSpeaker: (String?) -> Void
+    var onReviewTerms: () -> Void = {}
     @State private var sourceFilter: TranscriptSourceFilter = .all
     @State private var flowing = true
     @State private var hideEchoes = true
@@ -90,6 +91,8 @@ struct TranscriptWorkspaceView: View {
                 Picker("Metin görünümü", selection: $flowing) {
                     Text("Akıcı").tag(true); Text("Parçalar").tag(false)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
+                Button("Yazım önerileri", systemImage: "text.badge.checkmark", action: onReviewTerms)
+                    .buttonStyle(.plain).foregroundStyle(WorkspaceStyle.accent).disabled(store.workInProgress)
                 Spacer(minLength: 0)
                 if snapshot?.hiddenSegmentIDs.isEmpty == false {
                     Toggle("Çift yazılanları gizle", isOn: $hideEchoes).toggleStyle(.checkbox)

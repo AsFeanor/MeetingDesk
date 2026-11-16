@@ -28,6 +28,23 @@ final class CarryoverActionsTests: XCTestCase {
             previousMeetingID: nil, in: archive, now: now))
     }
 
+    func testExplicitSeriesSuggestsLatestMatchingMeetingWithoutLinkingOrCrossingProjects() {
+        let project = UUID(), series = UUID()
+        var current = meeting("New dated title", daysAgo: 0)
+        current.projectID = project; current.seriesID = series
+        var previous = meeting("Earlier differently titled review", daysAgo: 2, actions: [action()])
+        previous.projectID = project; previous.seriesID = series
+        var sameTitle = meeting(current.title, daysAgo: 1)
+        sameTitle.projectID = project; sameTitle.seriesID = UUID()
+        var otherProject = meeting(current.title, daysAgo: 0.5)
+        otherProject.projectID = UUID(); otherProject.seriesID = series
+        let values = [current, previous, sameTitle, otherProject]
+        XCTAssertEqual(CarryoverActions.suggestedPreviousMeeting(for: current, in: values, now: now)?.id, previous.id)
+        XCTAssertNil(current.previousMeetingID)
+        XCTAssertTrue(CarryoverActions.reminder(for: current, previousMeetingID: nil, in: values, now: now).tasks.isEmpty)
+        XCTAssertNil(CarryoverActions.suggestedPreviousMeeting(for: current, in: [current, sameTitle, otherProject], now: now))
+    }
+
     func testGenericOrDifferentTitlesNeverCreateAnAutomaticSuggestion() {
         let generic = meeting("Yeni toplantı", daysAgo: 0)
         let genericPrevious = meeting("YENİ TOPLANTI", daysAgo: 1, actions: [action()])

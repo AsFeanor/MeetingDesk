@@ -53,6 +53,7 @@ final class FloatingRecordingPanelController {
         model.start = { [weak self] in self?.startRecording() }
         model.pause = { [weak self] in self?.togglePause() }
         model.stop = { [weak self] in self?.stopRecording() }
+        model.mark = { [weak store] in _ = store?.markImportantMoment() }
         model.open = { [weak self] in self?.openMainWindow() }
         model.hide = { [weak self] in self?.hidePanel() }
         store.objectWillChange.sink { [weak self] _ in self?.scheduleRefresh() }.store(in: &subscriptions)
@@ -222,6 +223,7 @@ private final class FloatingRecordingPanelModel: ObservableObject {
     var start: () -> Void = {}
     var pause: () -> Void = {}
     var stop: () -> Void = {}
+    var mark: () -> Void = {}
     var open: () -> Void = {}
     var hide: () -> Void = {}
 }
@@ -309,6 +311,8 @@ private struct FloatingRecordingPanelView: View {
                     .buttonStyle(.bordered)
                     .accessibilityLabel(state.paused ? "Kayda devam et" : "Kaydı duraklat")
                     .help(state.paused ? "Kayda devam et" : "Kaydı duraklat")
+                Button(action: model.mark) { Image(systemName: "bookmark").frame(width: 22) }
+                    .buttonStyle(.bordered).help("Önemli anı işaretle · ⌘⇧M").accessibilityLabel("Önemli anı işaretle")
                 Button(action: model.stop) { Label("Bitir ve sakla", systemImage: "stop.fill").frame(maxWidth: .infinity) }
                     .buttonStyle(.borderedProminent)
             }

@@ -45,6 +45,8 @@ struct MeetingDeskApp: App {
                 Button(store.recorder.isPaused ? "Kayda devam et" : "Kaydı duraklat") {
                     if store.recorder.isPaused { store.recorder.resume() } else { store.recorder.pause() }
                 }
+                Button("Önemli anı işaretle · ⌘⇧M") { _ = store.markImportantMoment() }
+                    .disabled(!store.canMarkImportantMoment)
                 Button("Kaydı bitir ve sakla") { Task { await store.finishRecording() } }
                     .disabled(store.isBusy)
             } else {
@@ -72,10 +74,12 @@ final class MeetingAppDelegate: NSObject, NSApplicationDelegate {
     weak var store: AppStore?
     var onOpenMainWindow: (() -> Void)?
     private var recordingPanel: FloatingRecordingPanelController?
+    private var bookmarkShortcut: RecordingBookmarkShortcut?
 
     func configure(with store: AppStore) {
         self.store = store
         guard store.systemServicesEnabled, recordingPanel == nil else { return }
+        bookmarkShortcut = RecordingBookmarkShortcut(store: store)
         let controller = FloatingRecordingPanelController(store: store, detector: store.meetingDetector)
         controller.onOpenMainWindow = { [weak self] in self?.onOpenMainWindow?() }
         recordingPanel = controller
@@ -89,6 +93,7 @@ final class MeetingAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         store?.meetingDetector.stop()
         recordingPanel?.shutdown()
+        bookmarkShortcut = nil
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
