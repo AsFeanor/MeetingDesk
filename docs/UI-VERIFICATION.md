@@ -33,3 +33,22 @@ Görsel yerleşim sonucu: geçti. Canlı kullanıcı kabulü ayrıca değerlendi
 - 16 sentetik yerel görüntü incelendi: önceki 14 görünüm ve iki temada gerçek TranscriptWorkspaceView. İlk görsel kontrolde hatırlatma kartının içerik haritasına yerleşmesi ve bağımsız transkriptin şeffaf arka plan/etiket sorunları bulundu; kart ana nota taşındı, görünümün tema/etiketleri düzeltildi ve tekrar çizildi.
 - Kayıt başlatma en küçük pencerede görünür; hatırlatma ayrıntıları varsayılan kapalıdır. Akıcı görünümde her ufak parça için büyük bir kart çizilmez. Kaynak filtresi ve özgün parçaları açma kontrolleri korunur.
 - Mouse/klavye ile canlı etkileşim, yeni ASR çıktısının kelime doğruluğu ve uygulama içinden kurulum bu kontrolle kanıtlanmış sayılmaz.
+
+
+## 0.10.1 kaydırma kontrolü
+
+- Düzenli CoreAudio/pencere sorguları ana iş parçacığından utility görevine taşındı. Yavaş sorgu sırasında ana iş parçacığının çalışması, eski sonucun durdurma/yeniden başlatma/askıya alma sonrasında yayımlanmaması ve sorguların üst üste binmemesi kontrollü testlerle doğrulandı.
+- Arşivde her başlık/satır ayrı lazy öğedir. Hover durumu satırın içinde kalır. Sıralama, filtreler, kararlı kimlikler ve büyük geçmişin düzleştirilmesi davranış testleriyle kontrol edildi.
+- 660 Swift testi: 13 donanım/isteğe bağlı kontrol atlandı, hata yok. 22 paketleme testi geçti. 16 sentetik yerel görüntü iki temada üretildi; dar ana ekran görsel olarak incelendi.
+- İsteğe bağlı kaydırma tanısı gerçek RootView ve TranscriptWorkspaceView bileşenlerini gizli, sahip olunan NSWindow içinde kullanır. 10 sentetik toplantı ve toplantı başına 2.000 segmentle gerçek NSScrollView yer değiştirmesi doğrulanır. Transkriptin hazırlanması/gruplanması kaydırmada tekrar çalışmadı. Büyük transkriptte çizim maliyeti devam edebilir; bu kontrol tam akıcılık garantisi değildir.
+- Metin seçimini kaldırma ve alternatif yerel metin bileşeni karşılaştırıldı; mevcut seçme/kopyalama davranışını değiştiren düzenleme yayıma alınmadı.
+
+Bu tanı görünür pencere açmaz; masaüstü görüntüsü almaz, model çalıştırmaz ve gerçek toplantıları okumaz/değiştirmez. Programatik kaydırma ölçümü fiziksel trackpad, ekran birleştiricisi veya kurulu uygulamanın kullanıcı kabulü değildir. Süre değerleri CI kabul eşiği olarak kullanılmaz.
+
+Testleri normal komutla derledikten sonra yalnız tanıyı, işlem süresi sınırıyla çalıştırmak için:
+
+```sh
+python3 Scripts/probe-workspace-scroll.py --output-dir /tmp/meetingdesk-scroll-review
+```
+
+Başarılı rapor için hem ana görünümde hem transkriptte pozitif kaydırma alanı ve gerçek yer değiştirmesi, ayrıca transkriptin hazırlandığının doğrulanması gerekir. Rapor yalnız ölçümleri ve sentetik örneklerin sayaçlarını içerir.

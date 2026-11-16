@@ -1,9 +1,7 @@
-# Toplantı 0.10.0
+# Toplantı 0.10.1
 
-- İşlerim: tüm toplantıların görevlerini kişi, proje, seri, durum ve toplantı tarihiyle süzme; özgün görevi tamamlama ve kaynağa gitme.
-- Projeler ve toplantı serileri: açık üyelik seçimi, son iki görüşme karşılaştırması, geçmiş kararlar ve açık işler.
-- Önemli anlar: kayıt sırasında düğme veya ⌘⇧M ile zaman işareti, kısa not ve sonradan ilgili sesi/metni açma. Kısayol yalnız kayıt sırasında diğer uygulamalardan da kullanılabilir.
-- Toplantı geçmişine sor: mevcut yerel Qwen modeliyle kısa yanıtlar, doğrulanan özgün alıntılar ve toplantı/zaman kaynakları. İşlem yalnız Sor’a basınca çalışır; seçilen kaynaklar ve kapsam sınırı görünür.
-- Kişisel sözlük: ürün/kişi adları ve kısaltmalar için açıkça onaylanan yazım önerileri. Düzeltmeden önce transkript geçmişi saklanır; ses ve kişi eşleştirmeleri korunur.
+- Toplantıyı algılayan düzenli ses ve pencere kontrolleri arka plana taşındı. Bu kontroller arayüzün ana iş parçacığında çalışmıyor.
+- Toplantı arşivinde yalnız gereken satırlar oluşturuluyor. Fareyle bir satırın üzerine gelmek tüm listeyi yeniden çizmiyor.
+- Liste satırlarındaki tarih etiketlerinin tekrar hazırlanması azaltıldı; gün, dil ve saat dilimi değişiklikleri izleniyor.
 
-Mevcut toplantıları yeniden oluşturmak gerekmez. Yeni proje, sözlük ve işaret bilgileri yalnız bu Mac’te saklanır.
+Transkriptte metin seçme ve kopyalama korunuyor. Mevcut toplantıları yeniden oluşturmak gerekmez.

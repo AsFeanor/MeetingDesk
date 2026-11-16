@@ -186,15 +186,28 @@ struct MeetingDetectionPolicy {
 @MainActor
 final class MeetingDetector: ObservableObject {
     @Published private(set) var candidate: DetectedMeeting?
-    private var policy = MeetingDetectionPolicy()
+    private var policy: MeetingDetectionPolicy
     private var timer: Timer?
     private var isRunning = false
-    private let sample: () -> [DetectedMeeting]
+    private let sample: (() -> [DetectedMeeting])?
+    private let sampleAsync: @Sendable () async -> [DetectedMeeting]
     private let now: () -> Date
+    private var sampleTask: Task<Void, Never>?
+    private var generation = UUID()
+    private var isSuspended = false
 
-    init(sample: (() -> [DetectedMeeting])? = nil, now: @escaping () -> Date = Date.init) {
-        self.sample = sample ?? { MeetingDetectionReader.sample() }
+    init(sample: (() -> [DetectedMeeting])? = nil, now: @escaping () -> Date = Date.init,
+         sampleAsync: (@Sendable () async -> [DetectedMeeting])? = nil,
+         policy: MeetingDetectionPolicy = MeetingDetectionPolicy()) {
+        // Keep the synchronous, injected sampler for deterministic policy tests.
+        // Production reads CoreAudio and window metadata on a utility executor.
+        self.sample = sample
+        self.sampleAsync = sampleAsync ?? {
+            let task = Task.detached(priority: .utility) { MeetingDetectionReader.sample() }
+            return await withTaskCancellationHandler(operation: { await task.value }, onCancel: { task.cancel() })
+        }
         self.now = now
+        self.policy = policy
     }
 
     func start() {
@@ -210,6 +223,7 @@ final class MeetingDetector: ObservableObject {
 
     func stop() {
         isRunning = false
+        invalidateSample()
         timer?.invalidate()
         timer = nil
         policy.reset()
@@ -217,8 +231,11 @@ final class MeetingDetector: ObservableObject {
     }
 
     func setSuspended(_ suspended: Bool) {
+        guard suspended != isSuspended else { return }
+        isSuspended = suspended
+        invalidateSample()
         policy.setSuspended(suspended, at: now())
-        if suspended { candidate = nil }
+        if suspended && candidate != nil { candidate = nil }
     }
 
     func dismissCurrentMeeting() {
@@ -227,19 +244,62 @@ final class MeetingDetector: ObservableObject {
     }
 
     private func poll() {
-        guard isRunning else { return }
-        let observed = policy.observe(sample(), at: now())
+        guard isRunning, sampleTask == nil else { return }
+        if let sample {
+            accept(sample())
+            return
+        }
+        let generation = generation
+        let sampleAsync = sampleAsync
+        sampleTask = Task { @MainActor [weak self] in
+            let sampled = await sampleAsync()
+            guard let self else { return }
+            // Cancellation cannot interrupt a synchronous OS query. Keep ownership
+            // until it returns, including across stop/start, to prevent overlap.
+            self.sampleTask = nil
+            guard self.isRunning else { return }
+            guard generation == self.generation else {
+                self.poll()
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self.accept(sampled)
+        }
+    }
+
+    private func accept(_ sampled: [DetectedMeeting]) {
+        let observed = policy.observe(sampled, at: now())
         if candidate != observed { candidate = observed }
     }
 
-    deinit { timer?.invalidate() }
+    private func invalidateSample() {
+        generation = UUID()
+        sampleTask?.cancel()
+    }
+
+    deinit { timer?.invalidate(); sampleTask?.cancel() }
+
+    #if DEBUG
+    /// Runs the real reader once without returning application IDs or window data.
+    /// Intended for an explicitly requested local timing probe, never automatic logging.
+    nonisolated static func debugMeasureSystemSample() async -> (milliseconds: Double, detectedMeetingCount: Int) {
+        await Task.detached(priority: .utility) {
+            let start = DispatchTime.now().uptimeNanoseconds
+            let count = MeetingDetectionReader.sample().count
+            let elapsed = DispatchTime.now().uptimeNanoseconds - start
+            return (Double(elapsed) / 1_000_000, count)
+        }.value
+    }
+    #endif
 }
 
-@MainActor
 private enum MeetingDetectionReader {
+    // The installed AppKit SDK explicitly documents NSRunningApplication as
+    // thread-safe. Only its fixed bundle identifier is read on this executor.
     static func sample() -> [DetectedMeeting] {
+        guard !Task.isCancelled else { return [] }
         let processes = audioProcesses()
-        guard processes.contains(where: { $0.isInputRunning }) else { return [] }
+        guard !Task.isCancelled, processes.contains(where: { $0.isInputRunning }) else { return [] }
         let windows: [MeetingBrowserWindow]
         // This only checks an existing grant. Detection never asks for screen,
         // microphone or Accessibility access and never creates an audio stream.
@@ -266,6 +326,7 @@ private enum MeetingDetectionReader {
         }
         guard status == noErr else { return [] }
         return objects.compactMap { object in
+            guard !Task.isCancelled else { return nil }
             guard let active = uint32(object, selector: kAudioProcessPropertyIsRunningInput), active != 0,
                   let processID = processID(object) else { return nil }
             let bundle = bundleIdentifier(object)
@@ -280,6 +341,7 @@ private enum MeetingDetectionReader {
         guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
                 as? [[String: Any]] else { return [] }
         return windows.compactMap { window in
+            guard !Task.isCancelled else { return nil }
             guard (window[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
                   let process = window[kCGWindowOwnerPID as String] as? NSNumber,
                   let bundle = NSRunningApplication(processIdentifier: process.int32Value)?.bundleIdentifier,

@@ -36,7 +36,8 @@ struct TranscriptWorkspaceView: View {
             grouping: .init(source: sourceFilter.source, flowing: flowing, hideEchoes: hideEchoes), query: query)
     }
     var body: some View {
-        VStack(spacing: 0) {
+        WorkspaceRenderProbe.record(.transcriptBody)
+        return VStack(spacing: 0) {
             if !meeting.segments.isEmpty { searchAndViewControls }
             ScrollViewReader { proxy in
                 ScrollView {
@@ -107,6 +108,7 @@ struct TranscriptWorkspaceView: View {
     }
 
     private func conversationCard(_ row: TranscriptPresentationRow) -> some View {
+        WorkspaceRenderProbe.record(.transcriptRow)
         let block = row.block
         let editing = editingSegmentID.map(row.sourceIDs.contains) == true
         let focused = focusedSegmentID.map(row.sourceIDs.contains) == true

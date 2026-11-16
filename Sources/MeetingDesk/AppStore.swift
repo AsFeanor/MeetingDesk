@@ -116,7 +116,8 @@ final class AppStore: ObservableObject {
         defaultMicrophoneName = AVCaptureDevice.default(for: .audio)?.localizedName ?? "Mac’in varsayılan mikrofonu"
     }
     func playbackSources(for meeting: Meeting) -> [PlaybackSource] {
-        PlaybackSource.allCases.filter { source in
+        WorkspaceRenderProbe.record(.playbackSourceChecks)
+        return PlaybackSource.allCases.filter { source in
             guard let url = library.audioURL(for: meeting, source: source) else { return false }
             return FileManager.default.fileExists(atPath: url.path)
         }
@@ -266,6 +267,7 @@ final class AppStore: ObservableObject {
         update(id) { $0.outputLanguage = language; $0.notesNeedRefresh = $0.notes != nil }
     }
     var selectedRecoveryURL: URL? {
+        WorkspaceRenderProbe.record(.recoveryChecks)
         guard let selected else { return nil }
         let folder = library.directory(for: selected.id)
         let destination = folder.appendingPathComponent("recording.m4a")

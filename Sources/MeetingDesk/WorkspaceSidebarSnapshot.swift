@@ -7,6 +7,7 @@ struct WorkspaceSidebarSnapshot: Equatable {
         let id: UUID
         let title: String
         let createdAt: Date
+        let createdAtLabel: String
         let duration: Double
         let hasNotes: Bool
         let hasTranscript: Bool
@@ -18,10 +19,28 @@ struct WorkspaceSidebarSnapshot: Equatable {
         let title: String
         let meetings: [Row]
     }
+    /// Each header and each meeting is a separate lazy child. A historical
+    /// bucket may contain the entire archive and must not be one eager stack.
+    enum Item: Identifiable, Equatable {
+        enum ID: Hashable {
+            case heading(Int)
+            case meeting(UUID)
+        }
+        case heading(groupID: Int, title: String)
+        case meeting(Row)
+
+        var id: ID {
+            switch self {
+            case .heading(let groupID, _): return .heading(groupID)
+            case .meeting(let row): return .meeting(row.id)
+            }
+        }
+    }
     let groups: [Group]
+    let items: [Item]
     let matchCount: Int
     let peopleCount: Int
-    static let empty = WorkspaceSidebarSnapshot(groups: [], matchCount: 0, peopleCount: 0)
+    static let empty = WorkspaceSidebarSnapshot(groups: [], items: [], matchCount: 0, peopleCount: 0)
 
     static func build(meetings: [Meeting], profiles: [VoiceProfile], query: String, pendingOnly: Bool,
                       now: Date = Date(), calendar: Calendar = .current) -> WorkspaceSidebarSnapshot {
@@ -29,6 +48,7 @@ struct WorkspaceSidebarSnapshot: Equatable {
             let pending = meeting.notes?.actions.reduce(0) { $0 + (meeting.completedActions.contains($1.id) ? 0 : 1) } ?? 0
             guard (!pendingOnly || pending > 0), MeetingArchiveSearch.matches(meeting, query: query) else { return nil }
             return (index, Row(id: meeting.id, title: meeting.title, createdAt: meeting.createdAt,
+                createdAtLabel: meeting.createdAt.formatted(.dateTime.day().month(.abbreviated)),
                 duration: meeting.duration, hasNotes: meeting.notes != nil, hasTranscript: !meeting.segments.isEmpty,
                 notesAreReviewed: meeting.notesAreReviewed, pendingActionCount: pending))
         }.sorted {
@@ -46,7 +66,10 @@ struct WorkspaceSidebarSnapshot: Equatable {
             guard let rows = buckets[index], !rows.isEmpty else { return nil }
             return Group(id: index, title: titles[index], meetings: rows)
         }
-        return WorkspaceSidebarSnapshot(groups: groups, matchCount: rows.count,
+        let items = groups.flatMap { group in
+            [Item.heading(groupID: group.id, title: group.title)] + group.meetings.map(Item.meeting)
+        }
+        return WorkspaceSidebarSnapshot(groups: groups, items: items, matchCount: rows.count,
             peopleCount: PeopleDirectory.entries(meetings: meetings, profiles: profiles).count)
     }
 }

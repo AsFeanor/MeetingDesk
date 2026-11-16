@@ -59,6 +59,7 @@ struct TranscriptPresentationSnapshot {
     private let reviewIDs: Set<String>
 
     static func prepare(_ input: TranscriptPresentationInput) throws -> Self {
+        WorkspaceRenderProbe.record(.transcriptPrepare)
         try Task.checkCancellation()
         let meeting = input.meeting
         let speakerOrder = SpeakerReviewPolicy.speakerIDs(in: meeting)
@@ -80,6 +81,7 @@ struct TranscriptPresentationSnapshot {
     }
 
     func rows(for options: TranscriptGroupingOptions) throws -> [TranscriptPresentationRow] {
+        WorkspaceRenderProbe.record(.transcriptGroup)
         try Task.checkCancellation()
         let source = options.source
         let base = source == nil && options.hideEchoes ? echoOrdered : ordered
