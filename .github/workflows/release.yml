@@ -32,8 +32,8 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     env:
-      ASR_ARTIFACTS: ${{ runner.temp }}/meetingdesk-asr-artifacts
-      ASR_RUNTIME: ${{ runner.temp }}/meetingdesk-asr-runtime
+      ASR_ARTIFACTS: .build/whisper-artifacts
+      ASR_RUNTIME: .build/whisper-runtime
       GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN || github.token }}
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
     steps:
