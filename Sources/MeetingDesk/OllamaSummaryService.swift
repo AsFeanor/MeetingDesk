@@ -24,6 +24,7 @@ final class OllamaSummaryService: @unchecked Sendable {
     private static let origin = URL(string: "http://127.0.0.1:11471")!
     private static let maximumInputBytes = 1_000_000
     private static let maximumResponseBytes = 2_000_000
+    private static let maximumTopicEvidenceCount = 8
     private let session: URLSession
 
     init(protocolClasses: [AnyClass]? = nil) {
@@ -239,7 +240,10 @@ final class OllamaSummaryService: @unchecked Sendable {
             "model": modelName, "stream": false, "think": false, "truncate": false, "shift": false,
             "messages": [["role": "system", "content": instructions], ["role": "user", "content": user]],
             "format": schema(template: meeting.template),
-            "options": ["num_ctx": 65_536, "num_predict": 8_192, "temperature": 0.2, "num_thread": 4]
+            // Qwen3.5 non-thinking sampling; Ollama calls repetition_penalty repeat_penalty.
+            "options": ["num_ctx": 65_536, "num_predict": 8_192, "num_thread": 4,
+                        "temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0,
+                        "presence_penalty": 1.5, "repeat_penalty": 1.0, "seed": 42]
         ])
     }
 
@@ -289,7 +293,9 @@ final class OllamaSummaryService: @unchecked Sendable {
         let fact = object(["text": text, "evidence": evidence])
         let optionalText: [String: Any] = ["type": ["string", "null"]]
         let action = object(["text": text, "owner": optionalText, "due": optionalText, "evidence": evidence])
-        let topic = object(["title": text, "text": text, "evidence": evidence,
+        var topicEvidence = evidence
+        topicEvidence["maxItems"] = maximumTopicEvidenceCount
+        let topic = object(["title": text, "text": text, "evidence": topicEvidence,
                             "sectionID": ["type": "string", "enum": template.contextSections.map(\.id)]])
         return object(["summary": text, "decisions": array(fact), "actions": array(action),
                        "questions": array(fact), "ideas": array(fact), "topics": array(topic)])
@@ -333,7 +339,8 @@ final class OllamaSummaryService: @unchecked Sendable {
             try exactKeys(item, ["title", "text", "sectionID", "evidence"])
             let text = try nonempty(item["text"]), title = try nonempty(item["title"])
             let section = try nonempty(item["sectionID"]), sources = try evidence(item)
-            guard meeting.template.contextSections.contains(where: { $0.id == section }) else { throw Failure.invalidNotes }
+            guard sources.count <= maximumTopicEvidenceCount,
+                  meeting.template.contextSections.contains(where: { $0.id == section }) else { throw Failure.invalidNotes }
             return TopicNote(id: identifier("topics:\(section):\(title)", text, sources), title: title, text: text, evidence: sources, sectionID: section)
         }
         let result = MeetingNotes(summary: summary, decisions: try facts("decisions"), actions: actions,

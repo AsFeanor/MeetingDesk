@@ -346,8 +346,12 @@ struct RootView: View {
                         Text("Kayıtta konuşulan dil").font(.system(size: 11)).foregroundStyle(WorkspaceStyle.muted)
                         Picker("Konuşma dili", selection: Binding(get: { store.speechLanguage(for: meeting) }, set: { store.setSpeechLanguage($0, for: meeting.id) })) {
                             Text("Türkçe").tag("Türkçe"); Text("English").tag("English")
+                            Text(WhisperModelPin.mixedLanguage).tag(WhisperModelPin.mixedLanguage)
                         }.labelsHidden().disabled(store.workInProgress)
-                        Text("Konuşma dili otomatik algılanmaz. Özet dili ayrı seçilir.").font(.system(size: 10)).foregroundStyle(WorkspaceStyle.muted)
+                        Text(store.speechLanguage(for: meeting) == WhisperModelPin.mixedLanguage
+                             ? "Türkçe ve İngilizce birlikte tanınır. Özet dili ayrı seçilir."
+                             : "Tek dil seçili. İki dil konuşuluyorsa Türkçe + English seç.")
+                            .font(.system(size: 10)).foregroundStyle(WorkspaceStyle.muted)
                     }
                 }
                 VStack(alignment: .leading, spacing: 9) {
@@ -564,6 +568,7 @@ struct RootView: View {
                 MicrophoneControls(store: store)
                 Picker("Konuşma dili", selection: Binding(get: { store.speechLanguage(for: meeting) }, set: { store.setSpeechLanguage($0, for: meeting.id) })) {
                     Text("Türkçe").tag("Türkçe"); Text("English").tag("English")
+                    Text(WhisperModelPin.mixedLanguage).tag(WhisperModelPin.mixedLanguage)
                 }.frame(maxWidth: 240).disabled(store.workInProgress)
                     }.padding(.top, 12)
                 }.font(.system(size: 12)).disabled(store.workInProgress)

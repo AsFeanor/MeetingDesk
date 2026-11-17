@@ -55,6 +55,12 @@ final class AppStore: ObservableObject {
     @Published private(set) var localSummaryNeedsAppUpdate = false
     @Published private(set) var localSummaryModelProgress: Double?
     @Published private(set) var preparingLocalSummaryModel = false
+    @Published var preparingMixedModel = false
+    @Published var mixedModelReady = false
+    @Published var mixedModelProgress: Double?
+    @Published var mixedModelStatus = "Karma dil modelinin hazır olup olmadığını kontrol et."
+    var mixedModelPreparationID: UUID?
+    let whisperModels = WhisperModelStore()
     private let localSummarySettingsDefaults: UserDefaults
     private let localSummaryRuntime = SummaryModelRuntime()
     private var localSummaryPreparationID: UUID?
@@ -105,7 +111,7 @@ final class AppStore: ObservableObject {
     private static let audioRetentionPolicyKey = "meetingdesk.audioRetentionPolicy"
 
     var hasPendingRecordingSession: Bool { recordingID != nil }
-    var workInProgress: Bool { isBusy || isDeletingMeeting || preparingLocalSummaryModel || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession || notion.isExporting }
+    var workInProgress: Bool { isBusy || isDeletingMeeting || preparingLocalSummaryModel || preparingMixedModel || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession || notion.isExporting }
     var selected: Meeting? { meetings.first { $0.id == selectedID } }
     var recordingMeeting: Meeting? { meetings.first { $0.id == recordingID } }
     var hasPreviousTranscript: Bool { selected.map { library.hasTranscriptVersion(for: $0.id) } ?? false }
@@ -562,10 +568,10 @@ final class AppStore: ObservableObject {
         let segments: [TranscriptSegment]
         var separated = false
         var notice: String?
+        var provenance: TranscriptASRProvenance?
         if mode == .local {
-            let result = try await ChannelTranscriptionService().transcribe(mixedURL: audioURL,
-                microphoneURL: library.audioURL(for: meeting, source: .microphone),
-                systemURL: library.audioURL(for: meeting, source: .system), language: language, microphoneGain: meeting.microphoneGain ?? 1)
+            let (result, actualProvenance) = try await transcribeLocalMeeting(meeting, audioURL: audioURL, language: language)
+            provenance = actualProvenance
             segments = result.segments; separated = result.sourceSeparated; notice = result.notice
         } else {
             guard let service = selectedOpenAIService() else { throw MeetingError.message("OpenAI modu için API anahtarı gerekiyor.") }
@@ -576,6 +582,7 @@ final class AppStore: ObservableObject {
         guard update(id, {
             $0.segments = segments; $0.notesNeedRefresh = $0.notes != nil
             $0.transcriptionEngine = mode.rawValue
+            $0.transcriptASRProvenance = provenance
             $0.transcribedLanguage = mode == .local ? language : nil
             $0.speechLanguage = language; $0.speakerNames = [:]
             $0.transcriptSourceSeparated = separated
@@ -601,6 +608,7 @@ final class AppStore: ObservableObject {
                 $0.segments = previous.segments
                 $0.speakerNames = previous.speakerNames
                 $0.transcriptionEngine = previous.transcriptionEngine
+                $0.transcriptASRProvenance = previous.transcriptASRProvenance
                 $0.transcribedLanguage = previous.transcribedLanguage
                 $0.notes = previous.notes
                 $0.notesEngine = previous.notesEngine

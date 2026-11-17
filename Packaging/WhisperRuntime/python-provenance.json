@@ -1,0 +1,27 @@
+{
+  "archive": "cpython-3.12.12+20260211-aarch64-apple-darwin-install_only_stripped.tar.gz",
+  "archiveBytes": 17667661,
+  "archiveSHA256": "22625deaf5757e7c266cf1a096c9151a06b598b1e14632a2ec9993d58ec5fe84",
+  "checksumDocumentSHA256": "c1302bf47a26d62f0f84c3af28f81fcdf515851a23928ec0bae84c83688f3a51",
+  "metadataEntry": {
+    "arch": "aarch64",
+    "implementation": "cpython",
+    "key": "cpython-3.12.12-macos-aarch64-none",
+    "libc": "none",
+    "os": "macos",
+    "path": null,
+    "symlink": null,
+    "url": "https://releases.astral.sh/github/python-build-standalone/releases/download/20260211/cpython-3.12.12%2B20260211-aarch64-apple-darwin-install_only_stripped.tar.gz",
+    "variant": "default",
+    "version": "3.12.12",
+    "version_parts": {
+      "major": 3,
+      "minor": 12,
+      "patch": 12
+    }
+  },
+  "metadataSource": "https://github.com/astral-sh/python-build-standalone/releases/download/20260211/SHA256SUMS",
+  "publisherVersion": "20260211",
+  "uvVersion": "0.13.8",
+  "version": "3.12.12"
+}

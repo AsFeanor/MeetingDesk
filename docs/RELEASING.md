@@ -14,6 +14,27 @@ Besleme ve uygulama ZIP'i aynı release'te bulunur. İkisi draft'a yüklendikten
 
 Yayın aracı ayrıca ayrı güncelleme deposunu veya tamamen özel dağıtımı destekler; mevcut projede bunlar kullanılmaz. Özel dağıtımda her kullanıcı kendi `Contents: read` belirtecini Anahtar Zinciri'nde saklar ve besleme Contents API'sinden okunur. Depo görünürlüğü her yayın öncesi doğrulanır.
 
+## 0.11.0 / yapı 26 için çalışma ortamı
+
+Her paketlemeden önce Python **3.12.12** ile sabitlenmiş çalışma ortamını hazırlayın. CPython arşivi ve tam wheel kümesi SHA-256 ile doğrulanır; Torch ilk dağıtıma dahildir. Derleme ve son denetim ağ kullanmaz, model çalıştırmaz.
+
+```sh
+ASR_ARTIFACTS="$PWD/.build/whisper-artifacts"
+ASR_RUNTIME="$PWD/.build/whisper-runtime-0.11.0"
+python3.12 Packaging/WhisperRuntime/fetch_artifacts.py --destination "$ASR_ARTIFACTS"
+python3.12 Packaging/WhisperRuntime/build_runtime.py --artifacts "$ASR_ARTIFACTS" --destination "$ASR_RUNTIME" --worker Packaging/WhisperRuntime/worker.py --quality-accepted
+python3.12 Packaging/WhisperRuntime/finalize_runtime.py --runtime "$ASR_RUNTIME"
+export MEETINGDESK_ASR_RUNTIME="$ASR_RUNTIME"
+```
+
+Çalışma ortamı hedefi yeni olmalıdır. Ayrıntılı dosya ve bağımlılık denetimi [WhisperRuntime rehberinde](../Packaging/WhisperRuntime/README.md). Model ağırlıkları pakete alınmaz; kullanıcı uygulamanın **Modeli hazırla** düğmesiyle yaklaşık 1,6 GB modeli ayrı indirir. `MEETINGDESK_ASR_RUNTIME`, aşağıdaki tüm `Packaging/build.sh` çağrıları için zorunludur.
+
+Paketin yeni çalışma ortamı nedeniyle büyüyen ZIP’ini yayımlamadan önce:
+
+- Son uygulamada `codesign --verify --deep --strict` başarılı olmalı; manifestte çözülmemiş yerel bağımlılık veya kopuk sembolik bağlantı bulunmamalı.
+- ZIP yalnız `Toplanti.app` içermeli; model ağırlıkları, wheel önbelleği, derleme günlükleri ve toplantı verileri bulunmamalı. ZIP’in SHA-256 değeri, boyutu ve Ed25519 imzası hazırlık/yükleme adımlarında aynı arşive karşı doğrulanmalı.
+- İmzalanmış son pakette karma dil dökümü, iki ses kaynağının tamamının işlenmesi ve iptal akışı gerçek Mac denemesinde doğrulanmalı. Yerel test ve imza kontrolü sonuçları, kurulum/güncelleme ve gerçek kullanım sonuçlarıyla ayrı kaydedilmeli.
+
 ## Bir defalık yapılandırma
 
 Önce bağımlılığı indirip paketi oluşturun:
@@ -54,7 +75,7 @@ Ortam değişkenleri `UPDATE_REPOSITORY`, `SU_FEED_URL`, `SU_PUBLIC_ED_KEY`, `PR
 
 ## İlk güncellenebilir sürüm
 
-`Packaging/Info.plist` içindeki `CFBundleShortVersionString` kullanıcıya görünen sürüm, `CFBundleVersion` artan tam sayı yapı numarasıdır. İlk güncellenebilir sürüm `0.3.1` / yapı `6` idi. Bu sürüm `0.10.2` / yapı `25` olarak hazırlanır. Kaynak kod etiketi ve indirilebilir paket aynı sürüme karşılık gelir.
+`Packaging/Info.plist` içindeki `CFBundleShortVersionString` kullanıcıya görünen sürüm, `CFBundleVersion` artan tam sayı yapı numarasıdır. İlk güncellenebilir sürüm `0.3.1` / yapı `6` idi. Bu sürüm `0.11.0` / yapı `26` olarak hazırlanır. Kaynak kod etiketi ve indirilebilir paket aynı sürüme karşılık gelir.
 
 `0.5.5` ile eski imzalama anahtarına erişilemediği için yeni yerel anahtara geçilmiştir. Yeni kamuya açık anahtar `Packaging/release-config.json` içinde tutulur; gizli anahtar Anahtar Zinciri'nde kalır. `0.5.3` ve önceki sürümler yeni imzayı doğrulayamaz: kullanıcılar `0.5.5` paketini bir kez elle kurmalıdır. Sonraki sürümler yeni anahtarla imzalanarak uygulama içinden güncellenebilir. Yayında `--bootstrap` kullanılmaz; mevcut beslemenin yapı numarası kontrolü devam eder.
 
@@ -76,9 +97,9 @@ En güncel kararlı sürümü GitHub Releases sayfasından indirip **bir kez** k
 5. Sürümün hazır olduğu doğrulandıktan sonra yayınlayın.
 
 ```sh
-zsh Packaging/build.sh dist/v0.10.2
-python3 Packaging/release.py publish --app dist/v0.10.2/Toplanti.app --prepare-only
-python3 Packaging/release.py publish --app dist/v0.10.2/Toplanti.app --notes-file docs/release-notes.md
+zsh Packaging/build.sh dist/v0.11.0
+python3 Packaging/release.py publish --app dist/v0.11.0/Toplanti.app --prepare-only
+python3 Packaging/release.py publish --app dist/v0.11.0/Toplanti.app --notes-file docs/release-notes.md
 ```
 
 `--prepare-only` GitHub'dan salt okunur depo/besleme bilgisi alır ve yerel ZIP'i imzalar; release oluşturmaz ve beslemeyi değiştirmez. Kamuya açık anahtar ile ZIP imzası ayrıca CryptoKit kullanılarak doğrulanır.
@@ -102,7 +123,7 @@ Besleme en son tam paketi içerir; delta güncelleme üretilmez. `--bootstrap` b
 
 ## GitHub Actions
 
-`ci.yml` push/PR için test ve imzalı uygulama paketi oluşturur. Varsayılan yayın yolu bu Mac’in yerel Anahtar Zinciri’dir; GitHub Actions yayın imza sırrı tanımlı değildir. `release.yml` elle başlatılabilir. `v*` tag’inde otomatik yayın yalnız aşağıdaki secret’lar hazırlandıktan sonra `ENABLE_AUTOMATED_RELEASES=true` repository variable’ı açılırsa çalışır. Böylece yerelde yayımlanan bir sürüm için ikinci, yapılandırılmamış yayın görevi başlatılmaz. Runner `macos-latest` kullanır ve macOS SDK'sının 26.4+ olduğunu açıkça kontrol eder. Runner'da yerel Apple Intelligence bulunması gerekmez; canlı model kalitesi ve gerçek ses kayıtları ayrı Mac denemesi gerektirir.
+`ci.yml` push/PR için test ve imzalı uygulama paketi oluşturur. Varsayılan yayın yolu bu Mac’in yerel Anahtar Zinciri’dir; GitHub Actions yayın imza sırrı tanımlı değildir. `release.yml` elle başlatılabilir. `v*` tag’inde otomatik yayın yalnız aşağıdaki secret’lar hazırlandıktan sonra `ENABLE_AUTOMATED_RELEASES=true` repository variable’ı açılırsa çalışır. Böylece yerelde yayımlanan bir sürüm için ikinci, yapılandırılmamış yayın görevi başlatılmaz. Runner `macos-latest` kullanır ve macOS SDK'sının 26.4+ olduğunu açıkça kontrol eder. Her iki workflow `actions/setup-python@v5` ile Python 3.12.12 kurar; sabitlenmiş arşivleri indirir, çalışma ortamını çevrimdışı oluşturup denetler ve `MEETINGDESK_ASR_RUNTIME` ile paketlemeye verir. Model ağırlıkları CI’da indirilmez. Runner'da yerel Apple Intelligence bulunması gerekmez; canlı model kalitesi ve gerçek ses kayıtları ayrı Mac denemesi gerektirir.
 
 Otomatik yayın için kaynak deponun Actions secrets alanında:
 
@@ -114,9 +135,9 @@ Otomatik yayın için kaynak deponun Actions secrets alanında:
 Tag'i göndermeden önce sürüm/yapı değerleri ve kamuya açık güncelleme yapılandırması commit edilmiş olmalıdır:
 
 ```sh
-git tag v0.10.2
+git tag v0.11.0
 git push origin main
-git push origin v0.10.2
+git push origin v0.11.0
 ```
 
 İlk Actions yayını için workflow'u elle çalıştırıp `bootstrap: true` seçin. Yerelde ilk release zaten yayımlandıysa bu seçenek kullanılmaz.
@@ -125,7 +146,7 @@ git push origin v0.10.2
 
 Mevcut paketleme `codesign -` ile ad hoc imzalar. Sparkle'ın ZIP ve besleme Ed25519 imzaları yayıncı doğrulaması sağlar; Apple Gatekeeper'ın Developer ID/notarizasyon doğrulamasının yerine geçmez. Başka kullanıcılara daha rahat dağıtım için Apple Developer Program sertifikası ile `CODE_SIGN_IDENTITY` ayarlanabilir.
 
-Build script framework yardımcılarını, frameworkü ve uygulamayı içten dışa imzalar; Downloader XPC entitlements korunur. `--deep` imzalama için kullanılmaz, yalnız doğrulamada kullanılır. Developer ID kullanıldığında Hardened Runtime ve güvenilir zaman damgası eklenir. Notarizasyon, `notarytool` ve stapling ayrıca yapılandırılmalıdır; bu depo mevcut durumda bunları otomatik tamamlandığını iddia etmez.
+Build script Whisper çalışma ortamındaki yerel bileşenleri, framework yardımcılarını, frameworkü ve uygulamayı içten dışa imzalar; Downloader XPC entitlements korunur. `--deep` imzalama için kullanılmaz, yalnız doğrulamada kullanılır. Developer ID kullanıldığında Hardened Runtime ve güvenilir zaman damgası eklenir. Notarizasyon, `notarytool` ve stapling ayrıca yapılandırılmalıdır; bu depo mevcut durumda bunları otomatik tamamlandığını iddia etmez.
 
 Referanslar: [Sparkle kurulum](https://sparkle-project.org/documentation/), [paket ve besleme yayınlama](https://sparkle-project.org/documentation/publishing/), [yardımcıların kod imzası](https://sparkle-project.org/documentation/sandboxing/#code-signing), [GitHub release asset API](https://docs.github.com/en/rest/releases/assets), [GitHub Contents API](https://docs.github.com/en/rest/repos/contents).
 

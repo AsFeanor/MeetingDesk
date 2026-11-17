@@ -1,0 +1,18 @@
+{
+  "files": [
+    {
+      "bytes": 268,
+      "path": "config.json",
+      "sha256": "b34fc29e4e11e0a25e812775dd67f4dd16fc2c8eb43d28ae25ff7d660ecb6379"
+    },
+    {
+      "bytes": 1613977612,
+      "path": "weights.safetensors",
+      "sha256": "951ed3fc1203e6a62467abb2144a96ce7eafca8fa77e3704fdb8635ff3e7f8a6"
+    }
+  ],
+  "repository": "mlx-community/whisper-large-v3-turbo",
+  "revision": "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb",
+  "upstreamModel": "openai/whisper-large-v3-turbo",
+  "weightsDigestSource": "https://huggingface.co/mlx-community/whisper-large-v3-turbo/blob/main/weights.safetensors"
+}

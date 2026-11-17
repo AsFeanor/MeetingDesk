@@ -1,6 +1,6 @@
-# Toplantı 0.10.2
+# Toplantı 0.11.0
 
-- Toplantı penceresi öne alındığında ortaya çıkan ağır kaydırma için odak takibi daraltıldı. ⌘K aramasının odak değişiklikleri artık uygulamanın sahnesi yerine kendi menü komutunda izleniyor.
-- ⌘K kısayolu ve Toplantı bul menüsü korunuyor.
-
-Aynı içerikle yapılan yerel A/B denemesinde mevcut sürüm öndeyken kasarken düzeltilmiş sürüm akıcı bulundu. Mevcut toplantıları yeniden oluşturmak gerekmez.
+- **Konuşma dili → Türkçe + English** ile aynı toplantıdaki Türkçe ve İngilizce konuşmalar yerel Whisper large-v3-turbo modeliyle yazıya çevrilebilir. Özet dili ayrıca seçilir.
+- **Ayarlar → Konuşma dili → Karma dil modeli → Modeli hazırla**, yaklaşık 1,6 GB modeli bir kez indirip doğrular. Ardından karma dil dökümü Mac’te çevrimdışı çalışır; başka uygulama veya Python kurulumu gerekmez. Bu dağıtım Apple Silicon ve macOS 26.4+ içindir.
+- Mikrofon ve toplantı sesi ayrı işlenir. Kelime zamanları güvenilir değilse ilgili parça kaynak etiketiyle korunur.
+- **Toplantıyı sil…**, toplantının **…** ve sol liste sağ tıklama menülerine eklendi. Onaylanan toplantı sesleri, dökümü, notları ve geçmişiyle Finder’ın Çöp Sepeti’ne taşınır; klasör geri alınabilir.

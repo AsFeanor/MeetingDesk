@@ -16,11 +16,17 @@ concurrency:
 jobs:
   mac:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
+    env:
+      ASR_ARTIFACTS: ${{ runner.temp }}/meetingdesk-asr-artifacts
+      ASR_RUNTIME: ${{ runner.temp }}/meetingdesk-asr-runtime
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.12'
       - name: Check Apple toolchain
         run: |
           xcodebuild -version
@@ -37,7 +43,14 @@ jobs:
           CLANG_MODULE_CACHE_PATH: ${{ github.workspace }}/.build/ModuleCache
           SWIFT_MODULECACHE_PATH: ${{ github.workspace }}/.build/ModuleCache
         run: swift test --disable-sandbox --disable-keychain --cache-path .build/cache --scratch-path .build
+      - name: Assemble pinned offline transcription runtime
+        run: |
+          python3 Packaging/WhisperRuntime/fetch_artifacts.py --destination "$ASR_ARTIFACTS"
+          python3 Packaging/WhisperRuntime/build_runtime.py --artifacts "$ASR_ARTIFACTS" --destination "$ASR_RUNTIME" --worker Packaging/WhisperRuntime/worker.py --quality-accepted
+          python3 Packaging/WhisperRuntime/finalize_runtime.py --runtime "$ASR_RUNTIME"
       - name: Build app bundle
+        env:
+          MEETINGDESK_ASR_RUNTIME: ${{ env.ASR_RUNTIME }}
         run: zsh Packaging/build.sh dist/ci
       - name: Archive app bundle
         run: ditto -c -k --sequesterRsrc --keepParent dist/ci/Toplanti.app dist/Toplanti-CI.zip
