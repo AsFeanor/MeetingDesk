@@ -16,7 +16,7 @@ Yayın aracı ayrıca ayrı güncelleme deposunu veya tamamen özel dağıtımı
 
 ## 0.11.0 / yapı 26 için çalışma ortamı
 
-Her paketlemeden önce Python **3.12.12** ile sabitlenmiş çalışma ortamını hazırlayın. CPython arşivi ve tam wheel kümesi SHA-256 ile doğrulanır; Torch ilk dağıtıma dahildir. Derleme ve son denetim ağ kullanmaz, model çalıştırmaz.
+Paket hazırlama araçları Python **3.12.x** gerektirir; GitHub Actions, arm64 Mac paketi bulunan **3.12.10** sürümünü kullanır. Uygulamaya gömülen CPython ise doğrulanmış arşivden gelen **3.12.12** sürümüdür. CPython arşivi ve tam wheel kümesi SHA-256 ile doğrulanır; Torch ilk dağıtıma dahildir. Derleme ve son denetim ağ kullanmaz, model çalıştırmaz.
 
 ```sh
 ASR_ARTIFACTS="$PWD/.build/whisper-artifacts"
@@ -123,7 +123,7 @@ Besleme en son tam paketi içerir; delta güncelleme üretilmez. `--bootstrap` b
 
 ## GitHub Actions
 
-`ci.yml` push/PR için test ve imzalı uygulama paketi oluşturur. Varsayılan yayın yolu bu Mac’in yerel Anahtar Zinciri’dir; GitHub Actions yayın imza sırrı tanımlı değildir. `release.yml` elle başlatılabilir. `v*` tag’inde otomatik yayın yalnız aşağıdaki secret’lar hazırlandıktan sonra `ENABLE_AUTOMATED_RELEASES=true` repository variable’ı açılırsa çalışır. Böylece yerelde yayımlanan bir sürüm için ikinci, yapılandırılmamış yayın görevi başlatılmaz. Runner `macos-latest` kullanır ve macOS SDK'sının 26.4+ olduğunu açıkça kontrol eder. Her iki workflow `actions/setup-python@v5` ile Python 3.12.12 kurar; sabitlenmiş arşivleri indirir, çalışma ortamını çevrimdışı oluşturup denetler ve `MEETINGDESK_ASR_RUNTIME` ile paketlemeye verir. Model ağırlıkları CI’da indirilmez. Runner'da yerel Apple Intelligence bulunması gerekmez; canlı model kalitesi ve gerçek ses kayıtları ayrı Mac denemesi gerektirir.
+`ci.yml` push/PR için test ve imzalı uygulama paketi oluşturur. Varsayılan yayın yolu bu Mac’in yerel Anahtar Zinciri’dir; GitHub Actions yayın imza sırrı tanımlı değildir. `release.yml` elle başlatılabilir. `v*` tag’inde otomatik yayın yalnız aşağıdaki secret’lar hazırlandıktan sonra `ENABLE_AUTOMATED_RELEASES=true` repository variable’ı açılırsa çalışır. Böylece yerelde yayımlanan bir sürüm için ikinci, yapılandırılmamış yayın görevi başlatılmaz. Runner `macos-latest` kullanır ve macOS SDK'sının 26.4+ olduğunu açıkça kontrol eder. Her iki workflow `actions/setup-python@v5` ile hazırlık için Python 3.12.10 kurar; uygulamaya gömülen Python 3.12.12 arşivi ayrıca SHA-256 ile doğrulanır; sabitlenmiş arşivleri indirir, çalışma ortamını çevrimdışı oluşturup denetler ve `MEETINGDESK_ASR_RUNTIME` ile paketlemeye verir. Model ağırlıkları CI’da indirilmez. Runner'da yerel Apple Intelligence bulunması gerekmez; canlı model kalitesi ve gerçek ses kayıtları ayrı Mac denemesi gerektirir.
 
 Otomatik yayın için kaynak deponun Actions secrets alanında:
 
