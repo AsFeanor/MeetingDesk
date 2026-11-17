@@ -52,3 +52,18 @@ python3 Scripts/probe-workspace-scroll.py --output-dir /tmp/meetingdesk-scroll-r
 ```
 
 Başarılı rapor için hem ana görünümde hem transkriptte pozitif kaydırma alanı ve gerçek yer değiştirmesi, ayrıca transkriptin hazırlandığının doğrulanması gerekir. Rapor yalnız ölçümleri ve sentetik örneklerin sayaçlarını içerir.
+
+
+## 0.10.2 etkin pencere kontrolü
+
+Sorun, aynı toplantı arkada dururken kaydırmanın akıcı, pencere etkinleşince ağır olmasıyla daraltıldı. Öndeki pencere örneğinde maliyet ana iş parçacığının SwiftUI/AppKit etkileşim ve görünüm güncellemelerinde görüldü; arka plan model işlemi saptanmadı.
+
+`workspaceQuickOpen` için `@FocusedValue` uygulamanın `App` türünden ayrı bir `Commands` türüne taşındı. Böylece bu odak bağımlılığı yalnız ilgili menü komutunda kalır. Pencereye özgü eylemi yayımlayan RootView bağlantısı aynıdır. SwiftUI içindeki tam geri besleme mekanizması çıkarımdır; doğrulanan değişiklik gözlem kapsamının daralmasıdır.
+
+- Uygulamanın gerçek App/Scene/Commands yapısıyla iki geçici DEBUG uygulaması oluşturuldu. Aynı yerel veri kopyaları kullanıldı; sistem hizmetleri, gerçek ses kaydı ve model çalıştırma bu denemede kapalıydı. Ses düğmelerinin görünürlüğü için yalnız kullanılabilirlik yer tutucuları vardı; ses oynatma bu testin kapsamı değildir.
+- A mevcut uygulama kapsamındaki gözlemciyi, B yalnız komut kapsamındaki gözlemciyi kullandı. Kullanıcı aynı toplantıyı öndeki pencerede kaydırarak **A kasıyor, B akıcı** sonucunu bildirdi. Uygulamaların kendi işlem CPU süreleri de bu farkı destekledi. Bu kısa deneme için genel bir hızlanma yüzdesi verilmez.
+- Kullanıcı B penceresinde ⌘K aramasının açıldığını ayrıca doğruladı.
+- Geçici kayıt kopyaları ve ham performans raporları depoya veya yayın dosyalarına eklenmedi. Gerçek kullanıcı arşivi bu testler için değiştirilmedi.
+- 660 Swift testi (13 donanım/isteğe bağlı kontrol atlandı) ve 22 paketleme testi hatasız tamamlandı.
+
+Uygulama içinden kurulum ve normal sürümdeki son kullanıcı kabulü yayın sonrasında ayrıca değerlendirilir.

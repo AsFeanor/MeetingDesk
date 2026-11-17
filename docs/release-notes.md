@@ -1,7 +1,6 @@
-# Toplantı 0.10.1
+# Toplantı 0.10.2
 
-- Toplantıyı algılayan düzenli ses ve pencere kontrolleri arka plana taşındı. Bu kontroller arayüzün ana iş parçacığında çalışmıyor.
-- Toplantı arşivinde yalnız gereken satırlar oluşturuluyor. Fareyle bir satırın üzerine gelmek tüm listeyi yeniden çizmiyor.
-- Liste satırlarındaki tarih etiketlerinin tekrar hazırlanması azaltıldı; gün, dil ve saat dilimi değişiklikleri izleniyor.
+- Toplantı penceresi öne alındığında ortaya çıkan ağır kaydırma için odak takibi daraltıldı. ⌘K aramasının odak değişiklikleri artık uygulamanın sahnesi yerine kendi menü komutunda izleniyor.
+- ⌘K kısayolu ve Toplantı bul menüsü korunuyor.
 
-Transkriptte metin seçme ve kopyalama korunuyor. Mevcut toplantıları yeniden oluşturmak gerekmez.
+Aynı içerikle yapılan yerel A/B denemesinde mevcut sürüm öndeyken kasarken düzeltilmiş sürüm akıcı bulundu. Mevcut toplantıları yeniden oluşturmak gerekmez.
