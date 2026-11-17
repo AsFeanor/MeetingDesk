@@ -11,13 +11,18 @@ struct ChannelTranscriptionResult {
 /// Source failures are never replaced by a successful mixed-file transcription.
 struct ChannelTranscriptionService {
     typealias Transcriber = @Sendable (URL, String, Bool) async throws -> [TranscriptSegment]
+    typealias LanguageValidator = @Sendable (String) throws -> Void
     private let transcribeAudio: Transcriber
+    private let validateLanguage: LanguageValidator
     private let temporaryRoot: URL
 
-    init(temporaryRoot: URL = FileManager.default.temporaryDirectory, transcribeAudio: @escaping Transcriber = { url, language, allowNoSpeech in
+    init(temporaryRoot: URL = FileManager.default.temporaryDirectory,
+         validateLanguage: @escaping LanguageValidator = { _ = try LocalTranscriptionService.localeIdentifier(for: $0) },
+         transcribeAudio: @escaping Transcriber = { url, language, allowNoSpeech in
         try await LocalTranscriptionService().transcribe(audioURL: url, language: language, allowNoSpeech: allowNoSpeech)
     }) {
         self.transcribeAudio = transcribeAudio
+        self.validateLanguage = validateLanguage
         self.temporaryRoot = temporaryRoot
     }
 
@@ -25,7 +30,7 @@ struct ChannelTranscriptionService {
         mixedURL: URL, microphoneURL: URL? = nil, systemURL: URL? = nil, language: String, microphoneGain: Double = 1
     ) async throws -> ChannelTranscriptionResult {
         try Task.checkCancellation()
-        _ = try LocalTranscriptionService.localeIdentifier(for: language)
+        try validateLanguage(language)
         guard let microphoneURL, let systemURL else {
             // Legacy/imported recordings, or an explicitly missing source, need the
             // full mix so available microphone/remote speech is not silently lost.
@@ -147,7 +152,7 @@ struct ChannelTranscriptionService {
                 throw MeetingError.message("\(source.label) transkriptinin zaman bilgileri geçersiz olduğu için sonuç kaydedilmedi.")
             }
             let segment = TranscriptSegment(id: "\(source.prefix)-\(index + 1)", speaker: source.label,
-                                            start: original.start, end: original.end, text: clean, words: original.words,
+                                            start: original.start, end: original.end, text: clean, words: original.words, wordTimingIssue: original.wordTimingIssue,
                                             audioSource: source == .microphone ? .microphone : source == .system ? .system : .mixed)
             tagged.append(TaggedSegment(segment: segment, sourceOrder: source.order, index: index))
         }

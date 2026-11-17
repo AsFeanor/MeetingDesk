@@ -4,7 +4,17 @@ Mac üzerinde toplantı sesini kaydeden, yazılı döküm ve kaynak bağlantıl�
 
 ## Kurulum
 
-**0.10.2 / yapı 25** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+**0.11.0 / yapı 26** için [GitHub sürümünü](https://github.com/AsFeanor/MeetingDesk/releases/latest) kullanın. 0.5.5 kuruluysa uygulamadaki **Güncellemeleri kontrol et…** seçeneğiyle güncelleyebilirsiniz. İlk kurulumda uygulamayı Uygulamalar klasörüne taşıyın. **0.5.3 ve önceki sürümlerden geçiş**, 0.5.5'te değişen imzalama anahtarı nedeniyle bir kez elle kurulum gerektirir. [Adım adım kurulum rehberi](docs/INSTALLATION.md).
+
+## Türkçe ve İngilizce aynı toplantıda
+
+**Mac’te ücretsiz** modunda mevcut **Konuşma dili** alanındaki üçüncü seçenek olan **Türkçe + English** seçin. Yeni toplantıların varsayılanını Ayarlar’dan, açık toplantının dilini sağ ayrıntı panelinden değiştirebilirsiniz. Özet dili ayrıca seçilir. Tek dilli **Türkçe** ve **English** seçenekleri Apple’ın yerel konuşma modelini kullanır; karma dil seçeneği Whisper large-v3-turbo ile çalışır.
+
+İlk kullanımda **Ayarlar → Konuşma dili → Karma dil modeli → Modeli hazırla** ile yaklaşık **1,6 GB** model bir kez indirilir ve doğrulanır. Sonraki transkriptler bu Mac’te çevrimdışı hazırlanır. Çalışma ortamı uygulamanın içindedir; başka uygulama açmak, Python kurmak veya API anahtarı almak gerekmez. Mikrofon ve toplantı sesi ayrı işlenir. Yerel transkript için bu Apple Silicon dağıtımında **macOS 26.4+** gerekir.
+
+## Toplantıyı kaldırma
+
+Toplantının **…** menüsündeki veya sol listedeki sağ tıklama menüsündeki **Toplantıyı sil…** seçeneği, onaydan sonra toplantı klasörünü sesleri, dökümü, notları ve geçmiş sürümleriyle birlikte Finder’ın Çöp Sepeti’ne taşır. Klasör Çöp Sepeti’nden geri alınabilir. Kayıt, hazırlama veya paylaşım sürerken işlem kullanılamaz.
 
 ## İşlerim, projeler ve toplantı serileri
 
@@ -80,7 +90,7 @@ Kenar çubuğundaki **Kişiler** ekranında eklediğiniz kişileri arayabilir, i
 ## Neler yapıyor?
 
 - Seçilen mikrofon ve Mac'te çalan sistem sesi birlikte kaydedilir. Mikrofon güçlendirmesi seçilebilir; birleşik, yalnız mikrofon ve yalnız sistem kayıtları saklanır.
-- Türkçe veya İngilizce konuşma seçilen dilde Apple'ın yerel konuşma/dikte modeliyle yazıya çevrilir. Yerel döküm zaman damgalıdır; ayrı ses kaynaklarını etiketler, kişi kimliğini otomatik tanımaz.
+- Konuşma dilinde Türkçe ve English için Apple’ın yerel modeli, Türkçe + English için yerel Whisper modeli kullanılır. Yerel döküm zaman damgalıdır ve ayrı ses kaynaklarını etiketler.
 - Qwen3.5 dökümü bütün olarak değerlendirip kısa genel özet, konu başlıkları, kararlar ve tekrarsız yapılacaklar oluşturur. İptal edilmiş veya tamamlanmış işler bekleyen aksiyon olarak sunulmaz. Kaynak bağlantıları ilgili konuşmaya götürür. Apple Intelligence ayrıca temel seçenek olarak seçilebilir.
 - Kayıttan önce 10 saniyelik ses denemesi yapılabilir; deneme yalnız mikrofonu dinletir ve kapatıldığında geçici sesler silinir.
 - Ayrı mikrofon ve sistem kayıtları ayrı çözülüp zaman sırasına birleştirilir. Kaynak etiketleri “Mikrofon” ve “Toplantı sesi”dir; karşı taraftaki kişileri tek tek tanımaz. Eski veya içe aktarılan birleşik kayıtlar açık bir bilgiyle birleşik olarak çözülür.
@@ -118,9 +128,9 @@ Toplantı hatırlatıcısı desteklenen uygulamanın mikrofon sinyaline bakar, k
 
 ## Gereksinimler
 
-Kayıt arayüzü macOS 15 ve üzerini hedefler. Ücretsiz yerel transkript için macOS 26+ gerekir. Önerilen yerel Qwen özeti, uygulamayla gelen motor ve bir defalık model indirmesini kullanır. Temel Apple özeti için hazır Apple Intelligence gerekir. Yerel özelliklerin kullanılabilirliği uygulamada gösterilir.
+Kayıt arayüzü macOS 15 ve üzerini hedefler. Bu Apple Silicon dağıtımında ücretsiz yerel transkript için macOS 26.4+ gerekir. Önerilen yerel Qwen özeti, uygulamayla gelen motor ve bir defalık model indirmesini kullanır. Temel Apple özeti için hazır Apple Intelligence gerekir. Yerel özelliklerin kullanılabilirliği uygulamada gösterilir.
 
-Kaynak kodu derlemek için **Xcode 26.4+** ve macOS 26.4+ SDK gerekir. İlk derlemede SwiftPM sabitlenmiş Sparkle 2.10.0 paketini indirir. Paketlenen uygulama derlendiği Mac'in mimarisindedir; mevcut Apple Silicon dağıtımı Intel üzerinde çalışmaz.
+Kaynak kodu derlemek için **Xcode 26.4+** ve macOS 26.4+ SDK gerekir. Derleme araçları için Python 3.12.12 kullanılır. İlk derlemede SwiftPM sabitlenmiş bağımlılıkları, Whisper paketleme araçları ise doğrulanan CPython ve wheel arşivlerini indirir. Paketlenen uygulama derlendiği Mac'in mimarisindedir; mevcut Apple Silicon dağıtımı Intel üzerinde çalışmaz.
 
 ## Gizlilik ve kayıtlar
 
@@ -136,9 +146,16 @@ Kaynak kod ve sürüm paketleri aynı herkese açık [AsFeanor/MeetingDesk depos
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFT_MODULECACHE_PATH="$PWD/.build/ModuleCache"
 swift test --disable-sandbox --disable-keychain --cache-path .build/cache --scratch-path .build
-python3 -m unittest discover -s Packaging -p 'test_*.py'
-zsh Packaging/build.sh dist/development
+python3.12 -m unittest discover -s Packaging -p 'test_*.py'
+ASR_ARTIFACTS="$PWD/.build/whisper-artifacts"
+ASR_RUNTIME="$PWD/.build/whisper-runtime-0.11.0"
+python3.12 Packaging/WhisperRuntime/fetch_artifacts.py --destination "$ASR_ARTIFACTS"
+python3.12 Packaging/WhisperRuntime/build_runtime.py --artifacts "$ASR_ARTIFACTS" --destination "$ASR_RUNTIME" --worker Packaging/WhisperRuntime/worker.py --quality-accepted
+python3.12 Packaging/WhisperRuntime/finalize_runtime.py --runtime "$ASR_RUNTIME"
+MEETINGDESK_ASR_RUNTIME="$ASR_RUNTIME" zsh Packaging/build.sh dist/development
 ```
+
+Çalışma ortamı hedefi ilk oluşturulurken boş olmalıdır. Sabitlenmiş arşivler SHA-256 ile doğrulanır; kurulum çevrimdışı arşivlerden yapılır. CI aynı akış için Python 3.12.12 kullanır. Ayrıntılar [Whisper paketleme rehberinde](Packaging/WhisperRuntime/README.md). Model ağırlıkları uygulamaya veya güncelleme ZIP’ine eklenmez.
 
 Paket `dist/development/Toplanti.app` olur. Aynı çıktı klasöründeki mevcut uygulama üzerine yazılmaz; yeni derleme için yeni bir çıktı klasörü seçin. Uygulamayı Finder'dan çalıştırın. Kayıt için macOS'un mikrofon ve sistem sesi izinleri gerekir. Kabuk veya CI ortamında ses kodeği erişilemeyebilir; bu testler açıkça atlanır. CI testleri gerçek mikrofon kaydı veya Apple Intelligence model çalışmasını doğrulamaz.
 

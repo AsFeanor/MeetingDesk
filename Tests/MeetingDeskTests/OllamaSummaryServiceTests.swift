@@ -21,8 +21,15 @@ final class OllamaSummaryServiceTests: XCTestCase {
         for key in ["stream", "think", "truncate", "shift"] { XCTAssertEqual(requestBody[key] as? Bool, false, key) }
         let options = try XCTUnwrap(requestBody["options"] as? [String: Any])
         XCTAssertEqual(options["num_ctx"] as? Int, 65_536)
-        XCTAssertEqual(options["num_predict"] as? Int, 4_096)
-        XCTAssertEqual(options["temperature"] as? Double, 0.2)
+        XCTAssertEqual(options["num_predict"] as? Int, 8_192)
+        XCTAssertEqual(options["temperature"] as? Double, 0.7)
+        XCTAssertEqual(options["top_p"] as? Double, 0.8)
+        XCTAssertEqual(options["top_k"] as? Int, 20)
+        XCTAssertEqual(options["min_p"] as? Double, 0.0)
+        XCTAssertEqual(options["presence_penalty"] as? Double, 1.5)
+        XCTAssertEqual(options["repeat_penalty"] as? Double, 1.0)
+        XCTAssertEqual(options["seed"] as? Int, 42)
+        XCTAssertNil(options["repetition_penalty"], "Use the pinned Ollama API option name")
         XCTAssertEqual(options["num_thread"] as? Int, 4)
         let messages = try XCTUnwrap(requestBody["messages"] as? [[String: Any]])
         let user = try XCTUnwrap(messages.last?["content"] as? String)
@@ -284,6 +291,116 @@ final class OllamaSummaryServiceTests: XCTestCase {
         OllamaSummaryStub.setHandler { _ in throw URLError(.cancelled) }
         do { _ = try await service.summarize(meeting: sampleMeeting()); XCTFail("Cancellation ignored") }
         catch { XCTAssertTrue(error is CancellationError) }
+    }
+
+    func testKnownLocalResourceErrorsHaveFixedActionableMessageWithoutRawDetailsOrRetry() async throws {
+        let expected = "Yerel özet modeli Mac’in bellek veya grafik kaynaklarına erişemediği için başlatılamadı. Diğer ağır uygulamaları kapatıp Toplantı’yı yeniden açmayı deneyebilirsin. Transkript ve önceki notlar korunuyor."
+        for detail in ["Metal initialization: out of memory", "failed to allocate buffer", "unable to allocate memory", "cannot allocate memory"] {
+            let service = OllamaSummaryService(protocolClasses: [OllamaSummaryStub.self])
+            OllamaSummaryStub.setHandler { request in
+                switch request.url?.path {
+                case "/api/version": return (200, try self.json(["version": "0.40.11"]), request.url!)
+                case "/api/tags": return (200, try self.json(self.tags()), request.url!)
+                case "/api/show": return (200, try self.json(["details": ["format": "gguf"]]), request.url!)
+                default: return (500, try self.json(["error": detail + " PRIVATE GPU DETAIL"]), request.url!)
+                }
+            }
+            do { _ = try await service.summarize(meeting: sampleMeeting()); XCTFail("Resource failure accepted") }
+            catch {
+                XCTAssertEqual(error.localizedDescription, expected)
+                XCTAssertFalse(error.localizedDescription.contains("PRIVATE GPU DETAIL"))
+                XCTAssertFalse(error.localizedDescription.contains(detail))
+            }
+            XCTAssertEqual(OllamaSummaryStub.requests().filter { $0.url?.path == "/api/chat" }.count, 1)
+        }
+    }
+
+    func testUnknownOversizedAndNonstructuredServerErrorsRemainGeneric() async throws {
+        let bodies = [try json(["error": "PRIVATE UNKNOWN FAILURE"]), Data("out of memory PRIVATE NON-JSON".utf8),
+                      try json(["error": "out of memory " + String(repeating: "x", count: 16_384)]),
+                      try json(["error": 12])]
+        for body in bodies {
+            let service = OllamaSummaryService(protocolClasses: [OllamaSummaryStub.self])
+            OllamaSummaryStub.setHandler { request in
+                switch request.url?.path {
+                case "/api/version": return (200, try self.json(["version": "0.40.11"]), request.url!)
+                case "/api/tags": return (200, try self.json(self.tags()), request.url!)
+                case "/api/show": return (200, try self.json(["details": ["format": "gguf"]]), request.url!)
+                default: return (500, body, request.url!)
+                }
+            }
+            do { _ = try await service.summarize(meeting: sampleMeeting()); XCTFail("Server failure accepted") }
+            catch {
+                XCTAssertEqual(error.localizedDescription, "Yerel özet motoru çalıştırılamadı. Toplantı’yı yeniden açmayı deneyebilirsin. Transkript korunuyor.")
+                XCTAssertFalse(error.localizedDescription.contains("PRIVATE"))
+            }
+        }
+    }
+
+    func testLengthLimitedResponsesHaveSpecificErrorAndNeverReturnPartialNotes() throws {
+        let expected = "Yerel özet modelinin yanıtı uzunluk sınırına ulaştı. Eksik notlar kaydedilmedi; transkript ve önceki notlar korunuyor."
+        let partial = try json(["done": true, "done_reason": "length", "message": ["role": "assistant", "content": "{\"summary\":\"PRIVATE PARTIAL TEXT"]])
+        for response in [partial, try envelope(validWire(), reason: "length")] {
+            XCTAssertThrowsError(try OllamaSummaryService.notes(from: response, meeting: sampleMeeting())) { error in
+                XCTAssertEqual(error.localizedDescription, expected)
+                XCTAssertFalse(error.localizedDescription.contains("PRIVATE"))
+            }
+        }
+    }
+
+    func testRepresentativeCitationGuidanceDoesNotCapOrDropValidEvidence() throws {
+        var meeting = sampleMeeting()
+        meeting.segments = (0..<9).map { index in
+            TranscriptSegment(id: "original-\(index)", speaker: "raw", start: Double(index), end: Double(index + 1), text: "A supported part of the agreed outcome.")
+        }
+        let body = try object(XCTUnwrap(OllamaSummaryService.chatRequest(meeting: meeting).httpBody))
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let system = try XCTUnwrap(messages.first?["content"] as? String)
+        XCTAssertTrue(system.contains("smallest sufficient set of supporting aliases"))
+        XCTAssertTrue(system.contains("representative entries rather than every transcript fragment"))
+        let properties = try XCTUnwrap(OllamaSummaryService.schema(template: .general)["properties"] as? [String: Any])
+        let decisions = try XCTUnwrap(properties["decisions"] as? [String: Any])
+        let item = try XCTUnwrap(decisions["items"] as? [String: Any])
+        let fields = try XCTUnwrap(item["properties"] as? [String: Any])
+        let evidence = try XCTUnwrap(fields["evidence"] as? [String: Any])
+        XCTAssertNil(evidence["maxItems"])
+        var wire = validWire()
+        wire["decisions"] = [["text": "The complete supported outcome.", "evidence": (1...9).map { "s\($0)" }]]
+        let notes = try OllamaSummaryService.notes(from: envelope(wire), meeting: meeting)
+        XCTAssertEqual(notes.decisions[0].evidence, meeting.segments.map(\.id))
+    }
+
+    func testOnlyTopicCitationSchemaIsBoundedWhileAllOutcomesStayUncapped() throws {
+        for template in MeetingTemplate.allCases {
+            let properties = try XCTUnwrap(OllamaSummaryService.schema(template: template)["properties"] as? [String: Any])
+            for field in ["decisions", "actions", "questions", "ideas", "topics"] {
+                let array = try XCTUnwrap(properties[field] as? [String: Any])
+                XCTAssertNil(array["maxItems"], "No outcome or topic is sliced by a count cap")
+                let item = try XCTUnwrap(array["items"] as? [String: Any])
+                let fields = try XCTUnwrap(item["properties"] as? [String: Any])
+                let evidence = try XCTUnwrap(fields["evidence"] as? [String: Any])
+                XCTAssertEqual(evidence["minItems"] as? Int, 1)
+                if field == "topics" { XCTAssertEqual(evidence["maxItems"] as? Int, 8) }
+                else { XCTAssertNil(evidence["maxItems"], field) }
+            }
+        }
+    }
+
+    func testTopicAcceptsEightCitationsAndRejectsNineInsteadOfTrimming() throws {
+        var meeting = sampleMeeting()
+        meeting.segments = (0..<9).map { index in
+            TranscriptSegment(id: "original-\(index)", speaker: "raw", start: Double(index), end: Double(index + 1), text: "A representative source for the topic.")
+        }
+        var wire = validWire()
+        var topic: [String: Any] = ["title": "A topic", "text": "A concise supported topic.", "sectionID": "discussion", "evidence": (1...8).map { "s\($0)" }]
+        wire["topics"] = [topic]
+        let result = try OllamaSummaryService.notes(from: envelope(wire), meeting: meeting)
+        XCTAssertEqual(result.topics[0].evidence, meeting.segments.prefix(8).map(\.id))
+        topic["evidence"] = (1...9).map { "s\($0)" }
+        wire["topics"] = [topic]
+        XCTAssertThrowsError(try OllamaSummaryService.notes(from: envelope(wire), meeting: meeting))
+        let unchanged = try XCTUnwrap((wire["topics"] as? [[String: Any]])?.first?["evidence"] as? [String])
+        XCTAssertEqual(unchanged.count, 9)
     }
 
     private func sampleMeeting() -> Meeting {

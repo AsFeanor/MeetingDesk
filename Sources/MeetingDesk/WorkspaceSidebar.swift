@@ -13,6 +13,7 @@ struct WorkspaceSidebar: View {
     var onProjects: () -> Void = {}
     var onQuestions: () -> Void = {}
     var onGlossary: () -> Void = {}
+    var onDeleteMeeting: (UUID) -> Void = { _ in }
     @AppStorage(WorkspaceAppearance.defaultsKey) private var appearanceRaw = WorkspaceAppearance.system.rawValue
     @State private var pendingOnly = false
     @State private var searchTerm = ""
@@ -169,6 +170,11 @@ struct WorkspaceSidebar: View {
                                 selectionLocked: locked) {
                                     guard !selectionLocked else { return }
                                     store.selectedID = meeting.id
+                                }
+                                .contextMenu {
+                                    Button(role: .destructive) { onDeleteMeeting(meeting.id) } label: {
+                                        Label("Toplantıyı sil…", systemImage: "trash")
+                                    }.disabled(!store.canMoveMeetingToTrash(meeting.id))
                                 }
                         }
                     }

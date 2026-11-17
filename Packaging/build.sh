@@ -6,6 +6,10 @@ if [[ -e "$DEST_DIR/Toplanti.app" ]]; then
   print -u2 "Hedefte Toplanti.app var. Çalışan uygulamayı değiştirmemek için yeni bir çıktı klasörü seçin: $DEST_DIR"
   exit 1
 fi
+if [[ -z "${MEETINGDESK_ASR_RUNTIME:-}" || ! -f "${MEETINGDESK_ASR_RUNTIME:-}/runtime-manifest.json" ]]; then
+  print -u2 "Whisper çalışma ortamı hazır değil. Packaging/WhisperRuntime/README.md adımlarını tamamlayıp MEETINGDESK_ASR_RUNTIME ayarlayın."
+  exit 1
+fi
 cd "$PROJECT_DIR"
 export CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.build/ModuleCache"
 export SWIFT_MODULECACHE_PATH="$PROJECT_DIR/.build/ModuleCache"
@@ -18,13 +22,24 @@ if [[ ! -d "$FRAMEWORK_SOURCE" ]]; then
 fi
 mkdir -p "$DEST_DIR"
 STAGING_DIR="$(mktemp -d "$DEST_DIR/.meetingdesk-build.XXXXXX")"
-trap 'rm -rf "$STAGING_DIR"' EXIT
+cleanup_build() {
+  local build_exit_status=$?
+  if [[ "$build_exit_status" -ne 0 && "${MEETINGDESK_PRESERVE_FAILED_BUILD:-0}" == "1" ]]; then
+    print -u2 "Başarısız derleme inceleme için korundu: $STAGING_DIR"
+  else
+    rm -rf "$STAGING_DIR"
+  fi
+  return "$build_exit_status"
+}
+trap cleanup_build EXIT
 APP="$STAGING_DIR/Toplanti.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks" "$APP/Contents/Helpers"
 cp .build/release/MeetingDesk "$APP/Contents/MacOS/MeetingDesk"
 cp Packaging/Info.plist "$APP/Contents/Info.plist"
 cp LICENSE "$APP/Contents/Resources/MeetingDesk-LICENSE.txt"
 cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/ThirdPartyNotices.txt"
+mkdir -p "$APP/Contents/Resources/Licenses"
+cp Packaging/WhisperRuntime/*_LICENSE.txt "$APP/Contents/Resources/Licenses/"
 # ditto preserves the framework's version links and executable permissions.
 ditto "$FRAMEWORK_SOURCE" "$APP/Contents/Frameworks/Sparkle.framework"
 python3 Packaging/release.py configure --app "$APP"
@@ -59,6 +74,13 @@ for item in manifest['files']:
 manifest['layout'] = 'helpers-code-resources-data'
 path.write_text(json.dumps(manifest, indent=2) + '\n')
 PY
+# Embed the verified offline Python runtime only; model weights stay in the
+# application's separately verified Application Support model store.
+ASR_EMBED_ARGS=(--runtime "$MEETINGDESK_ASR_RUNTIME" --app "$APP" --identity "$IDENTITY")
+if [[ -n "${MEETINGDESK_ASR_ENTITLEMENTS:-}" ]]; then
+  ASR_EMBED_ARGS+=(--entitlements "$MEETINGDESK_ASR_ENTITLEMENTS")
+fi
+python3 Packaging/WhisperRuntime/embed_runtime.py "${ASR_EMBED_ARGS[@]}"
 FRAMEWORK="$APP/Contents/Frameworks/Sparkle.framework"
 # Sign each executable container inside out. Downloader has its own sandbox
 # entitlements; applying one --deep signature would lose this distinction.
@@ -76,7 +98,7 @@ codesign "${SIGN_ARGS[@]}" "$FRAMEWORK/Versions/B/Autoupdate"
 codesign "${SIGN_ARGS[@]}" "$FRAMEWORK/Versions/B/Updater.app"
 codesign "${SIGN_ARGS[@]}" "$FRAMEWORK"
 codesign "${SIGN_ARGS[@]}" --identifier com.altugegesari.meetingdesk "$APP"
-codesign --verify --deep --strict "$APP"
+codesign --verify --deep --strict --verbose=4 "$APP"
 plutil -lint "$APP/Contents/Info.plist"
 mv "$APP" "$DEST_DIR/Toplanti.app"
 print "Hazır: $DEST_DIR/Toplanti.app"

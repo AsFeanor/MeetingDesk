@@ -1045,3 +1045,46 @@ an artifact fingerprint to keep profiles from incompatible models separate.
 Model weights and voice profiles are not included in the application ZIP.
 The model downloads contain no meeting audio; enrollment/profile matching runs
 locally after the models are present.
+
+## Bundled local Whisper transcription runtime
+
+MeetingDesk / Toplantı bundles an isolated CPython 3.12.12 runtime and the pinned
+MLX Whisper dependencies for local transcription. Python is supplied by the
+Astral python-build-standalone 20260211 distribution. The runtime does not require
+a separately installed Python environment. Artifact versions and SHA-256 values
+are recorded in Packaging/WhisperRuntime/python-provenance.json and
+Packaging/WhisperRuntime/wheel-provenance.json.
+
+The following table summarizes principal bundled components. It does not replace
+their license texts or the additional notices for bundled libraries and other
+pinned dependencies. Python and dependency license files and component notices
+are included in Contents/Resources/ASRRuntime/Notices and retained with the
+installed distributions.
+
+| Component | Pinned version | License identification from the bundled distribution |
+| --- | --- | --- |
+| CPython and standard library | 3.12.12 | Python Software Foundation license, with historical and standard-library notices in LICENSE.txt |
+| mlx-whisper | 0.4.3 | MIT, as identified by the wheel metadata |
+| MLX and mlx-metal | 0.32.4 | MIT |
+| NumPy | 2.5.5 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
+| Numba | 0.68.1 | BSD-2-Clause; additional third-party notices are included |
+| llvmlite and bundled LLVM components | 0.50.0 | BSD-2-Clause AND Apache-2.0 WITH LLVM-exception |
+| SciPy | 1.18.1 | BSD-3-Clause; additional bundled-library notices are included |
+| PyTorch | 2.15.0 | Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND ISC AND MIT AND Zlib |
+
+The mlx-whisper wheel identifies MIT in its metadata but does not include a
+standalone license file. The upstream MLX example license and OpenAI Whisper
+license are included separately in Contents/Resources/Licenses. Its official
+source is https://github.com/ml-explore/mlx-examples/tree/main/whisper.
+
+PyTorch and its component notices are retained in this runtime distribution.
+Upstream projects: https://github.com/astral-sh/python-build-standalone,
+https://github.com/ml-explore/mlx-examples, https://github.com/ml-explore/mlx,
+https://numpy.org, https://numba.pydata.org, https://github.com/numba/llvmlite,
+https://scipy.org and https://pytorch.org.
+
+Whisper large-v3-turbo model weights are a separate verified first-use download.
+They are not included in the application or its update archive. The upstream
+model is https://huggingface.co/openai/whisper-large-v3-turbo; the MLX conversion
+is https://huggingface.co/mlx-community/whisper-large-v3-turbo. Publisher-provided
+model terms apply to those separately downloaded weights.

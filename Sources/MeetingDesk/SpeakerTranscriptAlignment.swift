@@ -14,6 +14,17 @@ enum SpeakerTranscriptAlignment {
             try Task.checkCancellation()
             let source = source(for: original)
             let candidates = turns.filter { $0.source == source && $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end > $0.start }
+            // A new ASR issue marker deliberately bypasses even dominant-voice
+            // fallback. The segment may span a speaker change without word times.
+            // Keep its exact text/times and channel identity for manual review.
+            if original.wordTimingIssue?.requiresConservativeSpeakerAssignment == true {
+                var value = original
+                value.audioSource = source
+                value.words = nil
+                value.speaker = sourceLabel(source)
+                result.append(value)
+                continue
+            }
             guard let words = original.words, !words.isEmpty,
                   words.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= original.start && $0.end <= original.end && $0.end >= $0.start }),
                   zip(words, words.dropFirst()).allSatisfy({ $0.start <= $1.start && $0.end <= $1.end }),

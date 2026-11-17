@@ -44,7 +44,10 @@ struct WorkspaceSettingsView: View {
         .preferredColorScheme((WorkspaceAppearance(rawValue: appearanceRaw) ?? .system).colorScheme)
         .onChange(of: store.processingMode) { _, _ in key = ""; keyError = nil; keySaved = false }
         .task(id: store.transcriptionLanguage) {
-            let status = await LocalTranscriptionService.availabilityDescription(language: store.transcriptionLanguage)
+            await store.refreshMixedModelStatus()
+            let status = store.transcriptionLanguage == WhisperModelPin.mixedLanguage
+                ? "Türkçe ve İngilizce birlikte tanınır; konuşulan dil korunur."
+                : await LocalTranscriptionService.availabilityDescription(language: store.transcriptionLanguage)
             guard !Task.isCancelled else { return }
             transcriptionStatus = status
         }
@@ -142,10 +145,12 @@ struct WorkspaceSettingsView: View {
                 Picker("Yeni toplantılar için konuşma dili", selection: $store.transcriptionLanguage) {
                     Text("Türkçe").tag("Türkçe")
                     Text("English").tag("English")
+                    Text(WhisperModelPin.mixedLanguage).tag(WhisperModelPin.mixedLanguage)
                 }.disabled(store.workInProgress)
-                note("Yeni toplantıların varsayılanıdır. Her toplantıda ayrıca değiştirebilirsin. Özet dili ayrı seçilir; konuşma dili otomatik algılanmaz.")
+                note("Yeni toplantıların varsayılanıdır. Her toplantıda ayrıca değiştirebilirsin. Türkçe + English iki dili birlikte tanır; özet dili ayrı seçilir.")
                 if store.processingMode == .local {
                     Text(transcriptionStatus).font(.caption).foregroundStyle(WorkspaceStyle.muted)
+                    MixedLanguageModelSettingsView(store: store)
                 }
             }
         }

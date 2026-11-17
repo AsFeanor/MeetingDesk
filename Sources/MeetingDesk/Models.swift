@@ -40,6 +40,7 @@ struct TranscriptSegment: Codable, Identifiable, Equatable {
     var end: Double
     var text: String
     var words: [TranscriptWord]? = nil
+    var wordTimingIssue: TranscriptWordTimingIssue? = nil
     var audioSource: SpeakerAudioSource? = nil
 }
 
@@ -89,6 +90,7 @@ struct Meeting: Codable, Identifiable, Equatable {
     var notesNeedRefresh: Bool = false
     var source: String = "Kayıt"
     var transcriptionEngine: String?
+    var transcriptASRProvenance: TranscriptASRProvenance?
     var notesEngine: String?
     var speechLanguage: String?
     var transcribedLanguage: String?

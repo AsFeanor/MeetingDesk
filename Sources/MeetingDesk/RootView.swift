@@ -35,6 +35,7 @@ struct RootView: View {
     @State private var editSegment: String?
     @State private var sharingMeeting: Meeting?
     @State private var editingMeeting: Meeting?
+    @State private var deletingMeeting: Meeting?
     @State private var reviewingSpeaker: SpeakerReviewRequest?
     @State private var showInspector = true
     @State private var showInspectorSheet = false
@@ -72,7 +73,8 @@ struct RootView: View {
                 onImportTranscript: { guard !store.workInProgress else { return }; showImport = true },
                 onPeople: { showPeople = true }, onQuickOpen: { showQuickOpen = true },
                 onWorkItems: { showTool(.work) }, onProjects: { showTool(.projects) },
-                onQuestions: { showTool(.questions) }, onGlossary: { showTool(.glossary) })
+                onQuestions: { showTool(.questions) }, onGlossary: { showTool(.glossary) },
+                onDeleteMeeting: requestMeetingDeletion)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 252, max: 300)
         } detail: {
             GeometryReader { geometry in
@@ -134,7 +136,10 @@ struct RootView: View {
         }
         .sheet(isPresented: $showImport) { ImportTranscriptView(store: store) }
         .sheet(isPresented: $store.showMicrophoneCheck) { MicrophoneCheckView(store: store) }
-        .sheet(item: $sharingMeeting) { SharingView(meeting: $0, notion: store.notion) }
+        .sheet(item: $sharingMeeting) {
+            SharingView(meeting: $0, notion: store.notion)
+                .modifier(MeetingDeletionShareSession(store: store))
+        }
         .sheet(item: $reviewingSpeaker) { request in
             SpeakerReviewWizard(store: store, meetingID: request.meetingID, initialSpeakerID: request.initialSpeakerID)
         }
@@ -142,6 +147,16 @@ struct RootView: View {
             NotesEditingView(meeting: meeting) { notes in
                 try store.saveEditedNotes(notes, meetingID: meeting.id)
             }
+        }
+        .confirmationDialog("Toplantı Çöp Sepeti’ne taşınsın mı?", isPresented: Binding(get: { deletingMeeting != nil }, set: { if !$0 { deletingMeeting = nil } }), titleVisibility: .visible, presenting: deletingMeeting) { meeting in
+            Button("Çöp Sepeti’ne taşı", role: .destructive) {
+                deletingMeeting = nil
+                _ = store.moveMeetingToTrash(meeting.id, expectedMeeting: meeting)
+            }
+            .disabled(!store.canMoveMeetingToTrash(meeting.id))
+            Button("İptal", role: .cancel) { deletingMeeting = nil }
+        } message: { meeting in
+            Text("“\(meeting.title)” toplantısının sesleri, transkripti, özeti, kişisel notları ve geçmiş sürümleri birlikte Çöp Sepeti’ne taşınacak. Finder’daki Çöp Sepeti’nden geri alabilirsin.")
         }
         .alert("İşlem tamamlanamadı", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button("Tamam") { store.errorMessage = nil }
@@ -223,6 +238,11 @@ struct RootView: View {
         if let source = MeetingBookmarkPolicy.source(for: bookmark, in: meeting) {
             focusID = source.id; transcriptQuery = ""; tab = .transcript
         }
+    }
+
+    private func requestMeetingDeletion(_ id: UUID) {
+        guard store.canMoveMeetingToTrash(id), let meeting = store.meetings.first(where: { $0.id == id }) else { return }
+        deletingMeeting = meeting
     }
 
     private func newMeeting() {
@@ -326,8 +346,12 @@ struct RootView: View {
                         Text("Kayıtta konuşulan dil").font(.system(size: 11)).foregroundStyle(WorkspaceStyle.muted)
                         Picker("Konuşma dili", selection: Binding(get: { store.speechLanguage(for: meeting) }, set: { store.setSpeechLanguage($0, for: meeting.id) })) {
                             Text("Türkçe").tag("Türkçe"); Text("English").tag("English")
+                            Text(WhisperModelPin.mixedLanguage).tag(WhisperModelPin.mixedLanguage)
                         }.labelsHidden().disabled(store.workInProgress)
-                        Text("Konuşma dili otomatik algılanmaz. Özet dili ayrı seçilir.").font(.system(size: 10)).foregroundStyle(WorkspaceStyle.muted)
+                        Text(store.speechLanguage(for: meeting) == WhisperModelPin.mixedLanguage
+                             ? "Türkçe ve İngilizce birlikte tanınır. Özet dili ayrı seçilir."
+                             : "Tek dil seçili. İki dil konuşuluyorsa Türkçe + English seç.")
+                            .font(.system(size: 10)).foregroundStyle(WorkspaceStyle.muted)
                     }
                 }
                 VStack(alignment: .leading, spacing: 9) {
@@ -409,6 +433,10 @@ struct RootView: View {
                         Button("Önceki döküme dön") { store.restorePreviousTranscript() }.disabled(!store.hasPreviousTranscript || store.workInProgress)
                         Divider()
                         Button("Yerel arşivi aç") { store.revealArchive() }
+                        Divider()
+                        Button(role: .destructive) { requestMeetingDeletion(meeting.id) } label: {
+                            Label("Toplantıyı sil…", systemImage: "trash")
+                        }.disabled(!store.canMoveMeetingToTrash(meeting.id))
                     } label: { Image(systemName: "ellipsis").frame(width: 24, height: 34) }
                         .menuStyle(.borderlessButton).fixedSize().help("Diğer toplantı işlemleri")
                 }
@@ -540,6 +568,7 @@ struct RootView: View {
                 MicrophoneControls(store: store)
                 Picker("Konuşma dili", selection: Binding(get: { store.speechLanguage(for: meeting) }, set: { store.setSpeechLanguage($0, for: meeting.id) })) {
                     Text("Türkçe").tag("Türkçe"); Text("English").tag("English")
+                    Text(WhisperModelPin.mixedLanguage).tag(WhisperModelPin.mixedLanguage)
                 }.frame(maxWidth: 240).disabled(store.workInProgress)
                     }.padding(.top, 12)
                 }.font(.system(size: 12)).disabled(store.workInProgress)

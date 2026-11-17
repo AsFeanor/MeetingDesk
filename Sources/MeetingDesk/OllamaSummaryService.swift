@@ -24,6 +24,7 @@ final class OllamaSummaryService: @unchecked Sendable {
     private static let origin = URL(string: "http://127.0.0.1:11471")!
     private static let maximumInputBytes = 1_000_000
     private static let maximumResponseBytes = 2_000_000
+    private static let maximumTopicEvidenceCount = 8
     private let session: URLSession
 
     init(protocolClasses: [AnyClass]? = nil) {
@@ -142,7 +143,7 @@ final class OllamaSummaryService: @unchecked Sendable {
     private func load(_ request: URLRequest) async throws -> Data {
         try Task.checkCancellation()
         let (data, response) = try await session.data(for: request)
-        try Self.check(response: response)
+        try Self.check(response: response, errorData: data)
         guard data.count <= Self.maximumResponseBytes else { throw Failure.invalidResponse }
         return data
     }
@@ -186,13 +187,26 @@ final class OllamaSummaryService: @unchecked Sendable {
             && url.user == nil && url.password == nil
     }
 
-    private static func check(response: URLResponse) throws {
+    private static func check(response: URLResponse, errorData: Data? = nil) throws {
         guard isLoopback(response.url), let http = response as? HTTPURLResponse else { throw Failure.nonlocalResponse }
         guard (200...299).contains(http.statusCode) else {
             if (300...399).contains(http.statusCode) { throw Failure.nonlocalResponse }
             if http.statusCode == 400 || http.statusCode == 413 { throw Failure.contextRejected }
+            if (500...599).contains(http.statusCode), let errorData,
+               isModelResourceFailure(errorData) { throw Failure.modelResourcesUnavailable }
             throw Failure.serviceUnavailable
         }
+    }
+
+    /// Classifies only a bounded structured local server error. Raw messages can
+    /// include private data and must never be surfaced to the user or logs.
+    private static func isModelResourceFailure(_ data: Data) -> Bool {
+        guard data.count <= 16_384,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = object["error"] as? String else { return false }
+        let message = error.lowercased()
+        return ["out of memory", "failed to allocate", "unable to allocate", "cannot allocate memory"]
+            .contains(where: message.contains)
     }
 
     private final class RejectRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
@@ -226,7 +240,10 @@ final class OllamaSummaryService: @unchecked Sendable {
             "model": modelName, "stream": false, "think": false, "truncate": false, "shift": false,
             "messages": [["role": "system", "content": instructions], ["role": "user", "content": user]],
             "format": schema(template: meeting.template),
-            "options": ["num_ctx": 65_536, "num_predict": 4_096, "temperature": 0.2, "num_thread": 4]
+            // Qwen3.5 non-thinking sampling; Ollama calls repetition_penalty repeat_penalty.
+            "options": ["num_ctx": 65_536, "num_predict": 8_192, "num_thread": 4,
+                        "temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0,
+                        "presence_penalty": 1.5, "repeat_penalty": 1.0, "seed": 42]
         ])
     }
 
@@ -261,7 +278,7 @@ final class OllamaSummaryService: @unchecked Sendable {
 
     Globally reconcile the whole meeting before writing: merge repeated mentions of one task or topic; later cancellations, completions, changed decisions and rejected options supersede earlier proposals. Decisions contain only explicitly accepted final outcomes. Actions contain ALL distinct, explicitly agreed or committed, still-unresolved tasks; do not limit or discard tasks to meet a word count. Preserve ownerless tasks with owner=null. Suggestions, conditional ideas, approval-waiting proposals, hypothetical examples, already-completed work and cancelled tasks are not pending actions. Questions contain only genuinely unanswered issues that remain open at the end. Ideas contain only relevant unaccepted options, without presenting them as agreed work. Empty outcome arrays are valid; never fill them with assumptions.
 
-    Every decision, action, question, idea and topic must cite one or more exact source aliases (s1, s2, ...), including clarifying/cancelling context when relevant. Put citations only in evidence arrays: never put aliases, raw source IDs, source ranges or timestamps in summary, titles or text. Cite the source entries that support the complete statement. Never invent aliases. Aliases are references, never people or due dates. Only providedSpeakerName is identity metadata; anonymous channels and numbered speaker labels are never owners. A person explicitly named in the cited text may also own an explicitly assigned task. Otherwise owner=null; never guess a person's identity from their voice or a pronoun. For due, copy only the exact original phrase explicitly attached to that same task in the cited source text; otherwise due=null. Do not convert dates or infer deadlines from timing, adjacent tasks, transcript order or the meeting date. Keep dates/names in their original form even when translating note prose. A report that work has already been completed is discussion/status context, not a newly agreed decision; reserve decisions for choices explicitly made or reaffirmed in this meeting.
+    Every decision, action, question, idea and topic must cite one or more exact source aliases (s1, s2, ...), including clarifying/cancelling context when relevant. Put citations only in evidence arrays: never put aliases, raw source IDs, source ranges or timestamps in summary, titles or text. Cite the source entries that support the complete statement. Use the smallest sufficient set of supporting aliases; for thematic topics cite representative entries rather than every transcript fragment that mentions the subject. Never invent aliases. Aliases are references, never people or due dates. Only providedSpeakerName is identity metadata; anonymous channels and numbered speaker labels are never owners. A person explicitly named in the cited text may also own an explicitly assigned task. Otherwise owner=null; never guess a person's identity from their voice or a pronoun. For due, copy only the exact original phrase explicitly attached to that same task in the cited source text; otherwise due=null. Do not convert dates or infer deadlines from timing, adjacent tasks, transcript order or the meeting date. Keep dates/names in their original form even when translating note prose. A report that work has already been completed is discussion/status context, not a newly agreed decision; reserve decisions for choices explicitly made or reaffirmed in this meeting.
 
     Use the selected template's exact sectionID for every topic. The six fields are summary (string), decisions (array of text/evidence), actions (array of text/owner/due/evidence), questions (array of text/evidence), ideas (array of text/evidence), topics (array of title/text/sectionID/evidence). There are no generated ID fields.
     """
@@ -276,7 +293,9 @@ final class OllamaSummaryService: @unchecked Sendable {
         let fact = object(["text": text, "evidence": evidence])
         let optionalText: [String: Any] = ["type": ["string", "null"]]
         let action = object(["text": text, "owner": optionalText, "due": optionalText, "evidence": evidence])
-        let topic = object(["title": text, "text": text, "evidence": evidence,
+        var topicEvidence = evidence
+        topicEvidence["maxItems"] = maximumTopicEvidenceCount
+        let topic = object(["title": text, "text": text, "evidence": topicEvidence,
                             "sectionID": ["type": "string", "enum": template.contextSections.map(\.id)]])
         return object(["summary": text, "decisions": array(fact), "actions": array(action),
                        "questions": array(fact), "ideas": array(fact), "topics": array(topic)])
@@ -285,6 +304,8 @@ final class OllamaSummaryService: @unchecked Sendable {
     static func notes(from data: Data, meeting: Meeting) throws -> MeetingNotes {
         _ = try sources(meeting: meeting)
         let envelope = try object(data)
+        if envelope["error"] == nil, envelope["done"] as? Bool == true,
+           envelope["done_reason"] as? String == "length" { throw Failure.outputLimitReached }
         guard envelope["error"] == nil, let done = envelope["done"] as? Bool, done,
               envelope["done_reason"] as? String == "stop",
               let message = envelope["message"] as? [String: Any], message["role"] as? String == "assistant",
@@ -318,7 +339,8 @@ final class OllamaSummaryService: @unchecked Sendable {
             try exactKeys(item, ["title", "text", "sectionID", "evidence"])
             let text = try nonempty(item["text"]), title = try nonempty(item["title"])
             let section = try nonempty(item["sectionID"]), sources = try evidence(item)
-            guard meeting.template.contextSections.contains(where: { $0.id == section }) else { throw Failure.invalidNotes }
+            guard sources.count <= maximumTopicEvidenceCount,
+                  meeting.template.contextSections.contains(where: { $0.id == section }) else { throw Failure.invalidNotes }
             return TopicNote(id: identifier("topics:\(section):\(title)", text, sources), title: title, text: text, evidence: sources, sectionID: section)
         }
         let result = MeetingNotes(summary: summary, decisions: try facts("decisions"), actions: actions,
@@ -370,11 +392,12 @@ final class OllamaSummaryService: @unchecked Sendable {
     }
 
     private enum Failure: LocalizedError {
-        case serviceUnavailable, runtimeOutdated, modelMissing, nonlocalResponse, contextRejected, invalidResponse
-        case incompleteDownload, invalidSources, incompleteNotes, invalidNotes
+        case serviceUnavailable, modelResourcesUnavailable, runtimeOutdated, modelMissing, nonlocalResponse, contextRejected, invalidResponse
+        case incompleteDownload, invalidSources, incompleteNotes, outputLimitReached, invalidNotes
         var errorDescription: String? {
             switch self {
             case .serviceUnavailable: return "Yerel özet motoru çalıştırılamadı. Toplantı’yı yeniden açmayı deneyebilirsin. Transkript korunuyor."
+            case .modelResourcesUnavailable: return "Yerel özet modeli Mac’in bellek veya grafik kaynaklarına erişemediği için başlatılamadı. Diğer ağır uygulamaları kapatıp Toplantı’yı yeniden açmayı deneyebilirsin. Transkript ve önceki notlar korunuyor."
             case .runtimeOutdated: return "Bu özet modeli için Toplantı’yı güncelle. Transkript korunuyor."
             case .modelMissing: return "Yerel Qwen özet modeli hazır değil. Ayarlar’dan modeli hazırla."
             case .nonlocalResponse: return "Yerel model bağlantısı yönlendirme döndürdü. Güvenli bağlantı kurulamadı; notlar kaydedilmedi."
@@ -382,6 +405,7 @@ final class OllamaSummaryService: @unchecked Sendable {
             case .invalidResponse: return "Yerel modelden geçerli bir yanıt alınamadı. Transkript korunuyor."
             case .incompleteDownload: return "Yerel model indirmesi tamamlanamadı. Yeniden deneyebilirsin."
             case .invalidSources: return "Toplantının transkript kaynakları doğrulanamadı. Önceki kayıt korunuyor."
+            case .outputLimitReached: return "Yerel özet modelinin yanıtı uzunluk sınırına ulaştı. Eksik notlar kaydedilmedi; transkript ve önceki notlar korunuyor."
             case .incompleteNotes: return "Yerel model özeti tamamlayamadı. Eksik notlar kaydedilmedi; transkript korunuyor."
             case .invalidNotes: return "Yerel özetin biçimi veya kaynak bağlantıları doğrulanamadı. Notlar kaydedilmedi; transkript korunuyor."
             }
