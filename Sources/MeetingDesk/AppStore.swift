@@ -13,6 +13,8 @@ final class AppStore: ObservableObject {
     @Published var errorMessage: String?
     @Published var statusMessage = ""
     @Published var isBusy = false
+    @Published var isDeletingMeeting = false
+    @Published var meetingSharingSessions: Set<UUID> = []
     @Published var showSettings = false
     @Published var showMicrophoneCheck = false
     @Published private(set) var audioRetentionPolicy: AudioRetentionPolicy = .disabled
@@ -103,7 +105,7 @@ final class AppStore: ObservableObject {
     private static let audioRetentionPolicyKey = "meetingdesk.audioRetentionPolicy"
 
     var hasPendingRecordingSession: Bool { recordingID != nil }
-    var workInProgress: Bool { isBusy || preparingLocalSummaryModel || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession || notion.isExporting }
+    var workInProgress: Bool { isBusy || isDeletingMeeting || preparingLocalSummaryModel || recorder.isRecording || showMicrophoneCheck || hasPendingRecordingSession || notion.isExporting }
     var selected: Meeting? { meetings.first { $0.id == selectedID } }
     var recordingMeeting: Meeting? { meetings.first { $0.id == recordingID } }
     var hasPreviousTranscript: Bool { selected.map { library.hasTranscriptVersion(for: $0.id) } ?? false }
@@ -444,6 +446,7 @@ final class AppStore: ObservableObject {
     }
 
     @discardableResult func update(_ id: UUID, _ change: (inout Meeting) -> Void) -> Bool {
+        guard !isDeletingMeeting else { return false }
         guard let index = meetings.firstIndex(where: { $0.id == id }) else { return false }
         var candidate = meetings[index]
         change(&candidate)
@@ -890,6 +893,10 @@ final class AppStore: ObservableObject {
 
     func stopSpeakerSample() {
         if playingSpeakerSampleID != nil { stopPlayback() }
+    }
+
+    func stopPlaybackForDeletedMeeting(_ id: UUID) {
+        if selectedID == id || playbackID == id { stopPlayback() }
     }
 
     func stopPlayback() {
