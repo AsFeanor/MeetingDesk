@@ -142,7 +142,7 @@ final class OllamaSummaryService: @unchecked Sendable {
     private func load(_ request: URLRequest) async throws -> Data {
         try Task.checkCancellation()
         let (data, response) = try await session.data(for: request)
-        try Self.check(response: response)
+        try Self.check(response: response, errorData: data)
         guard data.count <= Self.maximumResponseBytes else { throw Failure.invalidResponse }
         return data
     }
@@ -186,13 +186,26 @@ final class OllamaSummaryService: @unchecked Sendable {
             && url.user == nil && url.password == nil
     }
 
-    private static func check(response: URLResponse) throws {
+    private static func check(response: URLResponse, errorData: Data? = nil) throws {
         guard isLoopback(response.url), let http = response as? HTTPURLResponse else { throw Failure.nonlocalResponse }
         guard (200...299).contains(http.statusCode) else {
             if (300...399).contains(http.statusCode) { throw Failure.nonlocalResponse }
             if http.statusCode == 400 || http.statusCode == 413 { throw Failure.contextRejected }
+            if (500...599).contains(http.statusCode), let errorData,
+               isModelResourceFailure(errorData) { throw Failure.modelResourcesUnavailable }
             throw Failure.serviceUnavailable
         }
+    }
+
+    /// Classifies only a bounded structured local server error. Raw messages can
+    /// include private data and must never be surfaced to the user or logs.
+    private static func isModelResourceFailure(_ data: Data) -> Bool {
+        guard data.count <= 16_384,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = object["error"] as? String else { return false }
+        let message = error.lowercased()
+        return ["out of memory", "failed to allocate", "unable to allocate", "cannot allocate memory"]
+            .contains(where: message.contains)
     }
 
     private final class RejectRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
@@ -370,11 +383,12 @@ final class OllamaSummaryService: @unchecked Sendable {
     }
 
     private enum Failure: LocalizedError {
-        case serviceUnavailable, runtimeOutdated, modelMissing, nonlocalResponse, contextRejected, invalidResponse
+        case serviceUnavailable, modelResourcesUnavailable, runtimeOutdated, modelMissing, nonlocalResponse, contextRejected, invalidResponse
         case incompleteDownload, invalidSources, incompleteNotes, invalidNotes
         var errorDescription: String? {
             switch self {
             case .serviceUnavailable: return "Yerel özet motoru çalıştırılamadı. Toplantı’yı yeniden açmayı deneyebilirsin. Transkript korunuyor."
+            case .modelResourcesUnavailable: return "Yerel özet modeli Mac’in bellek veya grafik kaynaklarına erişemediği için başlatılamadı. Diğer ağır uygulamaları kapatıp Toplantı’yı yeniden açmayı deneyebilirsin. Transkript ve önceki notlar korunuyor."
             case .runtimeOutdated: return "Bu özet modeli için Toplantı’yı güncelle. Transkript korunuyor."
             case .modelMissing: return "Yerel Qwen özet modeli hazır değil. Ayarlar’dan modeli hazırla."
             case .nonlocalResponse: return "Yerel model bağlantısı yönlendirme döndürdü. Güvenli bağlantı kurulamadı; notlar kaydedilmedi."

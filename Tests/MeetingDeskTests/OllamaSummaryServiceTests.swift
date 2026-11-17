@@ -286,6 +286,50 @@ final class OllamaSummaryServiceTests: XCTestCase {
         catch { XCTAssertTrue(error is CancellationError) }
     }
 
+    func testKnownLocalResourceErrorsHaveFixedActionableMessageWithoutRawDetailsOrRetry() async throws {
+        let expected = "Yerel özet modeli Mac’in bellek veya grafik kaynaklarına erişemediği için başlatılamadı. Diğer ağır uygulamaları kapatıp Toplantı’yı yeniden açmayı deneyebilirsin. Transkript ve önceki notlar korunuyor."
+        for detail in ["Metal initialization: out of memory", "failed to allocate buffer", "unable to allocate memory", "cannot allocate memory"] {
+            let service = OllamaSummaryService(protocolClasses: [OllamaSummaryStub.self])
+            OllamaSummaryStub.setHandler { request in
+                switch request.url?.path {
+                case "/api/version": return (200, try self.json(["version": "0.40.11"]), request.url!)
+                case "/api/tags": return (200, try self.json(self.tags()), request.url!)
+                case "/api/show": return (200, try self.json(["details": ["format": "gguf"]]), request.url!)
+                default: return (500, try self.json(["error": detail + " PRIVATE GPU DETAIL"]), request.url!)
+                }
+            }
+            do { _ = try await service.summarize(meeting: sampleMeeting()); XCTFail("Resource failure accepted") }
+            catch {
+                XCTAssertEqual(error.localizedDescription, expected)
+                XCTAssertFalse(error.localizedDescription.contains("PRIVATE GPU DETAIL"))
+                XCTAssertFalse(error.localizedDescription.contains(detail))
+            }
+            XCTAssertEqual(OllamaSummaryStub.requests().filter { $0.url?.path == "/api/chat" }.count, 1)
+        }
+    }
+
+    func testUnknownOversizedAndNonstructuredServerErrorsRemainGeneric() async throws {
+        let bodies = [try json(["error": "PRIVATE UNKNOWN FAILURE"]), Data("out of memory PRIVATE NON-JSON".utf8),
+                      try json(["error": "out of memory " + String(repeating: "x", count: 16_384)]),
+                      try json(["error": 12])]
+        for body in bodies {
+            let service = OllamaSummaryService(protocolClasses: [OllamaSummaryStub.self])
+            OllamaSummaryStub.setHandler { request in
+                switch request.url?.path {
+                case "/api/version": return (200, try self.json(["version": "0.40.11"]), request.url!)
+                case "/api/tags": return (200, try self.json(self.tags()), request.url!)
+                case "/api/show": return (200, try self.json(["details": ["format": "gguf"]]), request.url!)
+                default: return (500, body, request.url!)
+                }
+            }
+            do { _ = try await service.summarize(meeting: sampleMeeting()); XCTFail("Server failure accepted") }
+            catch {
+                XCTAssertEqual(error.localizedDescription, "Yerel özet motoru çalıştırılamadı. Toplantı’yı yeniden açmayı deneyebilirsin. Transkript korunuyor.")
+                XCTAssertFalse(error.localizedDescription.contains("PRIVATE"))
+            }
+        }
+    }
+
     private func sampleMeeting() -> Meeting {
         Meeting(title: "Synthetic meeting", segments: [
             .init(id: "archived-original", speaker: "raw-a", start: 0, end: 5,

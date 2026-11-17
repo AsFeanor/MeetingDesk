@@ -638,7 +638,7 @@ final class AppStore: ObservableObject {
     func summarize() {
         guard let meeting = selected, !meeting.segments.isEmpty, !workInProgress else { return }
         let mode = processingMode
-        runProcessing(message: mode == .local ? "Toplantı notları Mac’te hazırlanıyor…" : "Kararlar, aksiyonlar ve açık sorular hazırlanıyor…") { [weak self] in
+        runProcessing(message: mode == .local ? "Toplantı notları Mac’te hazırlanıyor…" : "Kararlar, aksiyonlar ve açık sorular hazırlanıyor…", preserveErrorInStatus: true) { [weak self] in
             try await self?.summarizeMeeting(meeting.id, mode: mode)
         }
     }
@@ -734,7 +734,7 @@ final class AppStore: ObservableObject {
         return nil
     }
 
-    func runProcessing(message: String, operation: @escaping () async throws -> Void) {
+    func runProcessing(message: String, preserveErrorInStatus: Bool = false, operation: @escaping () async throws -> Void) {
         isBusy = true
         statusMessage = message
         processingTask = Task {
@@ -742,7 +742,11 @@ final class AppStore: ObservableObject {
             do { try await operation() }
             catch {
                 if Task.isCancelled { statusMessage = "İşlem iptal edildi. Yerel kayıt korunuyor." }
-                else { errorMessage = error.localizedDescription; statusMessage = "İşlem tamamlanamadı. Yeniden deneyebilirsin." }
+                else {
+                    let detail = error.localizedDescription
+                    errorMessage = detail
+                    statusMessage = preserveErrorInStatus ? detail : "İşlem tamamlanamadı. Yeniden deneyebilirsin."
+                }
             }
         }
     }
