@@ -21,7 +21,7 @@ final class OllamaSummaryServiceTests: XCTestCase {
         for key in ["stream", "think", "truncate", "shift"] { XCTAssertEqual(requestBody[key] as? Bool, false, key) }
         let options = try XCTUnwrap(requestBody["options"] as? [String: Any])
         XCTAssertEqual(options["num_ctx"] as? Int, 65_536)
-        XCTAssertEqual(options["num_predict"] as? Int, 4_096)
+        XCTAssertEqual(options["num_predict"] as? Int, 8_192)
         XCTAssertEqual(options["temperature"] as? Double, 0.2)
         XCTAssertEqual(options["num_thread"] as? Int, 4)
         let messages = try XCTUnwrap(requestBody["messages"] as? [[String: Any]])
@@ -328,6 +328,39 @@ final class OllamaSummaryServiceTests: XCTestCase {
                 XCTAssertFalse(error.localizedDescription.contains("PRIVATE"))
             }
         }
+    }
+
+    func testLengthLimitedResponsesHaveSpecificErrorAndNeverReturnPartialNotes() throws {
+        let expected = "Yerel özet modelinin yanıtı uzunluk sınırına ulaştı. Eksik notlar kaydedilmedi; transkript ve önceki notlar korunuyor."
+        let partial = try json(["done": true, "done_reason": "length", "message": ["role": "assistant", "content": "{\"summary\":\"PRIVATE PARTIAL TEXT"]])
+        for response in [partial, try envelope(validWire(), reason: "length")] {
+            XCTAssertThrowsError(try OllamaSummaryService.notes(from: response, meeting: sampleMeeting())) { error in
+                XCTAssertEqual(error.localizedDescription, expected)
+                XCTAssertFalse(error.localizedDescription.contains("PRIVATE"))
+            }
+        }
+    }
+
+    func testRepresentativeCitationGuidanceDoesNotCapOrDropValidEvidence() throws {
+        var meeting = sampleMeeting()
+        meeting.segments = (0..<9).map { index in
+            TranscriptSegment(id: "original-\(index)", speaker: "raw", start: Double(index), end: Double(index + 1), text: "A supported part of the agreed outcome.")
+        }
+        let body = try object(XCTUnwrap(OllamaSummaryService.chatRequest(meeting: meeting).httpBody))
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let system = try XCTUnwrap(messages.first?["content"] as? String)
+        XCTAssertTrue(system.contains("smallest sufficient set of supporting aliases"))
+        XCTAssertTrue(system.contains("representative entries rather than every transcript fragment"))
+        let properties = try XCTUnwrap(OllamaSummaryService.schema(template: .general)["properties"] as? [String: Any])
+        let decisions = try XCTUnwrap(properties["decisions"] as? [String: Any])
+        let item = try XCTUnwrap(decisions["items"] as? [String: Any])
+        let fields = try XCTUnwrap(item["properties"] as? [String: Any])
+        let evidence = try XCTUnwrap(fields["evidence"] as? [String: Any])
+        XCTAssertNil(evidence["maxItems"])
+        var wire = validWire()
+        wire["decisions"] = [["text": "The complete supported outcome.", "evidence": (1...9).map { "s\($0)" }]]
+        let notes = try OllamaSummaryService.notes(from: envelope(wire), meeting: meeting)
+        XCTAssertEqual(notes.decisions[0].evidence, meeting.segments.map(\.id))
     }
 
     private func sampleMeeting() -> Meeting {

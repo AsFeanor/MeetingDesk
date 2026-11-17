@@ -239,7 +239,7 @@ final class OllamaSummaryService: @unchecked Sendable {
             "model": modelName, "stream": false, "think": false, "truncate": false, "shift": false,
             "messages": [["role": "system", "content": instructions], ["role": "user", "content": user]],
             "format": schema(template: meeting.template),
-            "options": ["num_ctx": 65_536, "num_predict": 4_096, "temperature": 0.2, "num_thread": 4]
+            "options": ["num_ctx": 65_536, "num_predict": 8_192, "temperature": 0.2, "num_thread": 4]
         ])
     }
 
@@ -274,7 +274,7 @@ final class OllamaSummaryService: @unchecked Sendable {
 
     Globally reconcile the whole meeting before writing: merge repeated mentions of one task or topic; later cancellations, completions, changed decisions and rejected options supersede earlier proposals. Decisions contain only explicitly accepted final outcomes. Actions contain ALL distinct, explicitly agreed or committed, still-unresolved tasks; do not limit or discard tasks to meet a word count. Preserve ownerless tasks with owner=null. Suggestions, conditional ideas, approval-waiting proposals, hypothetical examples, already-completed work and cancelled tasks are not pending actions. Questions contain only genuinely unanswered issues that remain open at the end. Ideas contain only relevant unaccepted options, without presenting them as agreed work. Empty outcome arrays are valid; never fill them with assumptions.
 
-    Every decision, action, question, idea and topic must cite one or more exact source aliases (s1, s2, ...), including clarifying/cancelling context when relevant. Put citations only in evidence arrays: never put aliases, raw source IDs, source ranges or timestamps in summary, titles or text. Cite the source entries that support the complete statement. Never invent aliases. Aliases are references, never people or due dates. Only providedSpeakerName is identity metadata; anonymous channels and numbered speaker labels are never owners. A person explicitly named in the cited text may also own an explicitly assigned task. Otherwise owner=null; never guess a person's identity from their voice or a pronoun. For due, copy only the exact original phrase explicitly attached to that same task in the cited source text; otherwise due=null. Do not convert dates or infer deadlines from timing, adjacent tasks, transcript order or the meeting date. Keep dates/names in their original form even when translating note prose. A report that work has already been completed is discussion/status context, not a newly agreed decision; reserve decisions for choices explicitly made or reaffirmed in this meeting.
+    Every decision, action, question, idea and topic must cite one or more exact source aliases (s1, s2, ...), including clarifying/cancelling context when relevant. Put citations only in evidence arrays: never put aliases, raw source IDs, source ranges or timestamps in summary, titles or text. Cite the source entries that support the complete statement. Use the smallest sufficient set of supporting aliases; for thematic topics cite representative entries rather than every transcript fragment that mentions the subject. Never invent aliases. Aliases are references, never people or due dates. Only providedSpeakerName is identity metadata; anonymous channels and numbered speaker labels are never owners. A person explicitly named in the cited text may also own an explicitly assigned task. Otherwise owner=null; never guess a person's identity from their voice or a pronoun. For due, copy only the exact original phrase explicitly attached to that same task in the cited source text; otherwise due=null. Do not convert dates or infer deadlines from timing, adjacent tasks, transcript order or the meeting date. Keep dates/names in their original form even when translating note prose. A report that work has already been completed is discussion/status context, not a newly agreed decision; reserve decisions for choices explicitly made or reaffirmed in this meeting.
 
     Use the selected template's exact sectionID for every topic. The six fields are summary (string), decisions (array of text/evidence), actions (array of text/owner/due/evidence), questions (array of text/evidence), ideas (array of text/evidence), topics (array of title/text/sectionID/evidence). There are no generated ID fields.
     """
@@ -298,6 +298,8 @@ final class OllamaSummaryService: @unchecked Sendable {
     static func notes(from data: Data, meeting: Meeting) throws -> MeetingNotes {
         _ = try sources(meeting: meeting)
         let envelope = try object(data)
+        if envelope["error"] == nil, envelope["done"] as? Bool == true,
+           envelope["done_reason"] as? String == "length" { throw Failure.outputLimitReached }
         guard envelope["error"] == nil, let done = envelope["done"] as? Bool, done,
               envelope["done_reason"] as? String == "stop",
               let message = envelope["message"] as? [String: Any], message["role"] as? String == "assistant",
@@ -384,7 +386,7 @@ final class OllamaSummaryService: @unchecked Sendable {
 
     private enum Failure: LocalizedError {
         case serviceUnavailable, modelResourcesUnavailable, runtimeOutdated, modelMissing, nonlocalResponse, contextRejected, invalidResponse
-        case incompleteDownload, invalidSources, incompleteNotes, invalidNotes
+        case incompleteDownload, invalidSources, incompleteNotes, outputLimitReached, invalidNotes
         var errorDescription: String? {
             switch self {
             case .serviceUnavailable: return "Yerel özet motoru çalıştırılamadı. Toplantı’yı yeniden açmayı deneyebilirsin. Transkript korunuyor."
@@ -396,6 +398,7 @@ final class OllamaSummaryService: @unchecked Sendable {
             case .invalidResponse: return "Yerel modelden geçerli bir yanıt alınamadı. Transkript korunuyor."
             case .incompleteDownload: return "Yerel model indirmesi tamamlanamadı. Yeniden deneyebilirsin."
             case .invalidSources: return "Toplantının transkript kaynakları doğrulanamadı. Önceki kayıt korunuyor."
+            case .outputLimitReached: return "Yerel özet modelinin yanıtı uzunluk sınırına ulaştı. Eksik notlar kaydedilmedi; transkript ve önceki notlar korunuyor."
             case .incompleteNotes: return "Yerel model özeti tamamlayamadı. Eksik notlar kaydedilmedi; transkript korunuyor."
             case .invalidNotes: return "Yerel özetin biçimi veya kaynak bağlantıları doğrulanamadı. Notlar kaydedilmedi; transkript korunuyor."
             }
