@@ -6,7 +6,6 @@ struct MeetingDeskApp: App {
     @StateObject private var store = AppStore()
     @NSApplicationDelegateAdaptor(MeetingAppDelegate.self) private var delegate
     @Environment(\.openWindow) private var openWindow
-    @FocusedValue(\.workspaceQuickOpen) private var quickOpen
 
     var body: some Scene {
         WindowGroup("Toplantı", id: "main") {
@@ -30,9 +29,7 @@ struct MeetingDeskApp: App {
                 Button("Kayıt içe aktar…") { store.importAudio() }
                     .disabled(store.workInProgress)
             }
-            CommandGroup(after: .newItem) {
-                Button("Toplantı bul…") { quickOpen?() }.keyboardShortcut("k").disabled(quickOpen == nil)
-            }
+            WorkspaceQuickOpenCommands()
             CommandGroup(after: .appSettings) {
                 Button("Ayarlar…") { store.showSettings = true; openWindow(id: "main") }
                     .keyboardShortcut(",")
@@ -65,6 +62,19 @@ struct MeetingDeskApp: App {
         } label: {
             Image(systemName: store.recorder.isRecording ? "record.circle.fill" : "waveform")
                 .foregroundStyle(store.recorder.isRecording ? .red : .primary)
+        }
+    }
+}
+
+/// Focus changes only need to update this command, not the application scene.
+private struct WorkspaceQuickOpenCommands: Commands {
+    @FocusedValue(\.workspaceQuickOpen) private var quickOpen
+
+    var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Button("Toplantı bul…") { quickOpen?() }
+                .keyboardShortcut("k")
+                .disabled(quickOpen == nil)
         }
     }
 }
